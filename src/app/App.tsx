@@ -11,7 +11,6 @@ import { IS_MAC } from "@/lib/platform";
 import { quoteShellArg } from "@/lib/shellQuote";
 import { usePresence } from "@/lib/usePresence";
 import { useZoom } from "@/lib/useZoom";
-import { isMarkdownPath } from "@/lib/utils";
 import {
   type AgentLaunchRequest,
   AgentNotificationsBridge,
@@ -85,6 +84,7 @@ import { StatusBar } from "@/modules/statusbar";
 import {
   TabSwitcherHud,
   type CloseTabsPlan,
+  isFileTab,
   useTabSwitcher,
   useTabs,
   useWindowTitle,
@@ -180,8 +180,8 @@ export default function App() {
     openFileTab,
     pinTab,
     newPreviewTab,
-    newMarkdownTab,
-    setMarkdownView,
+    newRenderedTab,
+    setDocumentView,
     setOverrideLanguage,
     openAiDiffTab,
     closeAiDiffTab,
@@ -693,13 +693,13 @@ export default function App() {
 
   const handleOpenFile = useCallback(
     (path: string, pin?: boolean) => {
-      // Markdown opens in its rendered view by default; a per-tab toggle flips
-      // it to the raw editor. Other files default to preview (pin=false);
-      // explicit actions like context-menu "Open" pass pin=true to persist.
-      if (isMarkdownPath(path)) newMarkdownTab(path);
-      else openFileTab(path, pin ?? false);
+      // Markdown and notebooks open in their rendered view by default; a
+      // per-tab toggle flips them to the raw editor. Other files default to
+      // preview (pin=false); explicit actions like context-menu "Open" pass
+      // pin=true to persist.
+      if (newRenderedTab(path) === null) openFileTab(path, pin ?? false);
     },
-    [openFileTab, newMarkdownTab],
+    [openFileTab, newRenderedTab],
   );
 
   const openLaunchFiles = useCallback(
@@ -744,7 +744,7 @@ export default function App() {
   const handleExplorerPathRenamed = useCallback(
     (from: string, to: string) => {
       for (const tab of tabsRef.current) {
-        if (tab.kind !== "editor" && tab.kind !== "markdown") continue;
+        if (!isFileTab(tab)) continue;
         const path = renamedPath(tab.path, from, to);
         if (path === null) continue;
         const i = path.lastIndexOf("/");
@@ -785,7 +785,7 @@ export default function App() {
     return null;
   })();
   const explorerActiveFilePath =
-    activeTab?.kind === "editor" || activeTab?.kind === "markdown"
+    activeTab && isFileTab(activeTab)
       ? activeTab.path
       : null;
   const isRepositoryContextCurrent = useCallback(
@@ -1569,7 +1569,7 @@ export default function App() {
                         onAiDiffReject={(id) => respondToApproval(id, false)}
                         onOpenCommitFile={openCommitFileDiffTab}
                         onGitHistorySearchHandle={setGitHistoryHandle}
-                        onSetMarkdownView={setMarkdownView}
+                        onSetDocumentView={setDocumentView}
                       />
                     </div>
 

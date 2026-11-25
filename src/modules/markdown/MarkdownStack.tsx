@@ -5,7 +5,7 @@ import { MarkdownPreviewPane } from "./MarkdownPreviewPane";
 type Props = {
   tabs: Tab[];
   activeId: number;
-  onSetMarkdownView: (id: number, mode: "rendered" | "raw") => void;
+  onSetDocumentView: (id: number, mode: "rendered" | "raw") => void;
 };
 
 /** The folder the explorer shows: the active terminal's cwd, else any terminal's. */
@@ -16,7 +16,7 @@ function workspaceRootOf(tabs: Tab[], activeId: number): string | null {
   return null;
 }
 
-export function MarkdownStack({ tabs, activeId, onSetMarkdownView }: Props) {
+export function MarkdownStack({ tabs, activeId, onSetDocumentView }: Props) {
   const markdowns = tabs.filter(
     (t): t is MarkdownTab => t.kind === "markdown" && !t.cold,
   );
@@ -39,7 +39,7 @@ export function MarkdownStack({ tabs, activeId, onSetMarkdownView }: Props) {
               path={t.path}
               workspaceRoot={workspaceRoot}
               visible={visible}
-              onSetView={(mode) => onSetMarkdownView(t.id, mode)}
+              onSetView={(mode) => onSetDocumentView(t.id, mode)}
             />
           </div>
         );

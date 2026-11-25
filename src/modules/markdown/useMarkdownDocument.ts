@@ -34,11 +34,13 @@ function toStatus(res: ReadResult): MarkdownStatus {
  * the loading state, keeps the last good text when a read fails midway
  * through an agent's atomic rewrite, and returns the same status object when
  * nothing changed so unchanged documents do not re-render. A hidden tab only
- * remembers that it is stale and catches up when shown.
+ * remembers that it is stale and catches up when shown. `force` lifts the
+ * 10 MB soft limit ("Open anyway"); the backend's 50 MB hard cap still holds.
  */
 export function useMarkdownDocument(
   path: string,
   visible: boolean,
+  force = false,
 ): MarkdownStatus {
   const [status, setStatus] = useState<MarkdownStatus>({ kind: "loading" });
   const visibleRef = useRef(visible);
@@ -67,6 +69,7 @@ export function useMarkdownDocument(
       invoke<ReadResult>("fs_read_file", {
         path,
         workspace,
+        force,
       })
         .then((res) => {
           if (!alive || id !== requestId) return;
@@ -133,7 +136,7 @@ export function useMarkdownDocument(
       for (const un of unlisten) un();
       watchRemove([dir], [path], workspace);
     };
-  }, [path]);
+  }, [path, force]);
 
   return status;
 }

@@ -505,6 +505,13 @@ html *::-webkit-scrollbar {
   contain-intrinsic-size: auto 96px;
 }
 
+/* Notebook cells off screen skip layout and paint, so a notebook with
+ * hundreds of cells costs only what is near the viewport. */
+.terax-notebook-cell {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 80px;
+}
+
 /* File icons load lazily; a slot that was blank at mount fades its icon in. */
 @keyframes terax-icon-in {
   from {

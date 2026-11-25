@@ -33,7 +33,7 @@ function renderEditor(path: string, activeId = 1) {
       onDirtyChange: () => {},
       registerHandle: () => {},
       onCloseTab: () => {},
-      onSetMarkdownView: () => {},
+      onSetDocumentView: () => {},
     }),
   );
 }

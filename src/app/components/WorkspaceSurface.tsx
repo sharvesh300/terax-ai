@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { AiDiffStack, EditorStack, GitDiffStack } from "@/modules/editor";
 import { GitHistoryStack } from "@/modules/git-history";
 import { MarkdownStack } from "@/modules/markdown";
+import { NotebookStack } from "@/modules/notebook";
 import { PreviewStack } from "@/modules/preview";
 import type { Tab } from "@/modules/tabs";
 import { TerminalStack } from "@/modules/terminal";
@@ -31,7 +32,7 @@ type Props = {
   onAiDiffReject: AiDiffStackProps["onReject"];
   onOpenCommitFile: GitHistoryStackProps["onOpenCommitFile"];
   onGitHistorySearchHandle: GitHistoryStackProps["onSearchHandle"];
-  onSetMarkdownView: EditorStackProps["onSetMarkdownView"];
+  onSetDocumentView: EditorStackProps["onSetDocumentView"];
 };
 
 const LAYER = "absolute inset-0";
@@ -62,13 +63,14 @@ export function WorkspaceSurface({
   onAiDiffReject,
   onOpenCommitFile,
   onGitHistorySearchHandle,
-  onSetMarkdownView,
+  onSetDocumentView,
 }: Props) {
   const kind = activeTab?.kind;
   const isTerminalTab = kind === "terminal";
   const isEditorTab = kind === "editor";
   const isPreviewTab = kind === "preview";
   const isMarkdownTab = kind === "markdown";
+  const isNotebookTab = kind === "notebook";
   const isAiDiffTab = kind === "ai-diff";
   const isGitDiffTab = kind === "git-diff" || kind === "git-commit-file";
   const isGitHistoryTab = kind === "git-history";
@@ -103,7 +105,7 @@ export function WorkspaceSurface({
           registerHandle={registerEditorHandle}
           onDirtyChange={onEditorDirtyChange}
           onCloseTab={onEditorCloseTab}
-          onSetMarkdownView={onSetMarkdownView}
+          onSetDocumentView={onSetDocumentView}
         />
       </div>
       <div
@@ -124,7 +126,17 @@ export function WorkspaceSurface({
         <MarkdownStack
           tabs={tabs}
           activeId={activeId}
-          onSetMarkdownView={onSetMarkdownView}
+          onSetDocumentView={onSetDocumentView}
+        />
+      </div>
+      <div
+        className={cn(LAYER, !isNotebookTab && "invisible pointer-events-none")}
+        aria-hidden={!isNotebookTab}
+      >
+        <NotebookStack
+          tabs={tabs}
+          activeId={activeId}
+          onSetDocumentView={onSetDocumentView}
         />
       </div>
       <div

@@ -53,7 +53,12 @@ import {
 import { useShallow } from "zustand/react/shallow";
 import { selectTabAgentStatus } from "./lib/tabAgentStatus";
 import { labelFor } from "./lib/tabLabel";
-import type { EditorTab, Tab, TerminalTab } from "./lib/useTabs";
+import {
+  type EditorTab,
+  isFileTab,
+  type Tab,
+  type TerminalTab,
+} from "./lib/useTabs";
 import { NewTabMenu } from "./NewTabMenu";
 
 type Props = {
@@ -667,7 +672,7 @@ function TerminalTabIcon({ tab }: { tab: TerminalTab }) {
 }
 
 export function TabIcon({ tab }: { tab: Tab }) {
-  if (tab.kind === "editor" || tab.kind === "markdown") {
+  if (isFileTab(tab)) {
     return (
       <FileIcon
         name={

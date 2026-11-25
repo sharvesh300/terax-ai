@@ -77,7 +77,7 @@ export const LANGUAGES: LanguageDefinition[] = [
   },
   {
     name: "JSON",
-    extensions: ["json", "jsonc", "json5"],
+    extensions: ["json", "jsonc", "json5", "ipynb"],
     loader: () => import("@codemirror/lang-json").then((m) => m.json()),
     filenames: [".eslintrc", ".babelrc", ".prettierrc"],
     userSelectable: true,

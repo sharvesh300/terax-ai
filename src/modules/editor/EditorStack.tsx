@@ -1,4 +1,4 @@
-import { cn, isMarkdownPath } from "@/lib/utils";
+import { cn, isMarkdownPath, isNotebookPath } from "@/lib/utils";
 import { MarkdownViewToggle } from "@/modules/markdown";
 import { useWindowInactive } from "@/modules/theme/WindowActivityBridge";
 import type { EditorTab, Tab } from "@/modules/tabs";
@@ -11,7 +11,7 @@ type Props = {
   onDirtyChange: (id: number, dirty: boolean) => void;
   registerHandle: (id: number, handle: EditorPaneHandle | null) => void;
   onCloseTab: (id: number) => void;
-  onSetMarkdownView: (id: number, mode: "rendered" | "raw") => void;
+  onSetDocumentView: (id: number, mode: "rendered" | "raw") => void;
 };
 
 export function EditorStack({
@@ -20,7 +20,7 @@ export function EditorStack({
   onDirtyChange,
   registerHandle,
   onCloseTab,
-  onSetMarkdownView,
+  onSetDocumentView,
 }: Props) {
   const editors = tabs.filter(
     (t): t is EditorTab => t.kind === "editor" && !t.cold,
@@ -106,10 +106,10 @@ export function EditorStack({
             aria-hidden={!visible}
           >
             <div className="relative h-full overflow-hidden bg-background">
-              {isMarkdownPath(t.path) && (
+              {(isMarkdownPath(t.path) || isNotebookPath(t.path)) && (
                 <MarkdownViewToggle
                   mode="raw"
-                  onChange={(mode) => onSetMarkdownView(t.id, mode)}
+                  onChange={(mode) => onSetDocumentView(t.id, mode)}
                   renderedDisabled={t.dirty}
                   renderedHint="Save to preview"
                 />

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isMarkdownPath } from "./utils";
+import { isMarkdownPath, isNotebookPath } from "./utils";
 
 describe("isMarkdownPath", () => {
   it("matches markdown extensions case-insensitively", () => {
@@ -18,5 +18,14 @@ describe("isMarkdownPath", () => {
     expect(isMarkdownPath("file.txt")).toBe(false);
     expect(isMarkdownPath("mdfile")).toBe(false);
     expect(isMarkdownPath("md")).toBe(false);
+  });
+});
+
+describe("isNotebookPath", () => {
+  it("matches .ipynb at the end of the path, any case", () => {
+    expect(isNotebookPath("analysis.ipynb")).toBe(true);
+    expect(isNotebookPath("C:\\work\\Model.IPYNB")).toBe(true);
+    expect(isNotebookPath("analysis.ipynb.bak")).toBe(false);
+    expect(isNotebookPath("ipynb")).toBe(false);
   });
 });

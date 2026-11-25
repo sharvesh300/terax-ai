@@ -130,6 +130,18 @@ describe("path-backed explorer mutations", () => {
     ).toEqual({ dirtyIds: [], cleanIds: [4] });
   });
 
+  it("treats notebook tabs as path-backed views", () => {
+    const notebook = {
+      ...markdown(5, "/repo/eda.ipynb"),
+      kind: "notebook" as const,
+    };
+    expect(hasOpenPathTab([notebook], "/repo")).toBe(true);
+    expect(deletedPathTabs([notebook], ["/repo"])).toEqual({
+      dirtyIds: [],
+      cleanIds: [5],
+    });
+  });
+
   it("identifies spaces emptied by deleting their final tabs", () => {
     expect(
       spacesEmptiedByTabs(

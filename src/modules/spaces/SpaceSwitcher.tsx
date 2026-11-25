@@ -6,7 +6,7 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { useShortcutLabel } from "@/modules/shortcuts";
-import { labelFor, type Tab, TabIcon } from "@/modules/tabs";
+import { isFileTab, labelFor, type Tab, TabIcon } from "@/modules/tabs";
 import {
   ArrowDown01Icon,
   ArrowRight01Icon,
@@ -64,7 +64,7 @@ function subtitleFor(tab: Tab): string | null {
     const segs = tab.cwd.split(/[\\/]/).filter(Boolean);
     return segs.slice(-2).join("/") || tab.cwd;
   }
-  if (tab.kind === "editor" || tab.kind === "markdown") {
+  if (isFileTab(tab)) {
     const segs = tab.path.split(/[\\/]/).filter(Boolean);
     return segs.slice(-2, -1)[0] ?? null;
   }
