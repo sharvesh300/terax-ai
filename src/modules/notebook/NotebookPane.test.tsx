@@ -1,19 +1,33 @@
 import { readFileSync } from "node:fs";
-import type { MarkdownStatus } from "@/modules/markdown/useMarkdownDocument";
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import {
+  initialSession,
+  type SessionState,
+  sessionReducer,
+} from "./lib/session";
 import { NotebookPane } from "./NotebookPane";
 
+type Status =
+  | { kind: "ready"; content: string }
+  | { kind: "toolarge"; size: number; limit: number }
+  | { kind: "error"; message: string };
+
 const doc = vi.hoisted(() => ({
-  status: { kind: "loading" } as MarkdownStatus,
+  state: { kind: "loading" } as unknown,
   force: [] as boolean[],
 }));
 
-vi.mock("@/modules/markdown/useMarkdownDocument", () => ({
-  useMarkdownDocument: (_path: string, _visible: boolean, force: boolean) => {
+vi.mock("./useNotebookSession", () => ({
+  useNotebookSession: (_path: string, _visible: boolean, force: boolean) => {
     doc.force.push(force);
-    return doc.status;
+    return {
+      state: doc.state,
+      dispatch: () => {},
+      save: async () => true,
+      reloadFromDisk: () => {},
+    };
   },
 }));
 
@@ -22,8 +36,21 @@ const fixture = readFileSync(
   "utf8",
 );
 
-function render(status: MarkdownStatus) {
-  doc.status = status;
+function toState(status: Status): SessionState {
+  if (status.kind !== "ready") return status;
+  return sessionReducer(initialSession, {
+    type: "read",
+    result: {
+      kind: "text",
+      content: status.content,
+      size: status.content.length,
+      mtime: 1,
+    },
+  });
+}
+
+function render(status: Status) {
+  doc.state = toState(status);
   return renderToString(
     createElement(NotebookPane, {
       path: "/r/eda.ipynb",
@@ -38,7 +65,12 @@ describe("NotebookPane", () => {
     const html = render({ kind: "ready", content: fixture });
     expect(html).toContain("Python 3 (ipykernel)");
     expect(html).toContain("6<!-- --> <!-- -->cells");
-    expect(html).toContain("Read-only");
+    // Editing toolbar; running waits for a kernel.
+    expect(html).toContain("No kernel");
+    expect(html).toMatch(
+      /<button[^>]*disabled=""[^>]*title="Running cells needs a kernel/,
+    );
+    expect(html).toContain('aria-label="Cell type"');
     expect(html).toMatch(/<h1[^>]*>Analysis — résumé 📈<\/h1>/);
     expect(html).toContain("[1]:");
     expect(html).toContain("Out[2]:");
@@ -113,6 +145,49 @@ describe("NotebookPane", () => {
     expect(html).toContain("Show 1 hidden output");
     expect(html).not.toContain("secret_source");
     expect(html).not.toContain("secret output");
+  });
+
+  it("guards unsaved edits: Raw is off, Save is on, disk changes ask", () => {
+    let state = toState({ kind: "ready", content: fixture });
+    if (state.kind !== "ready") throw new Error("not ready");
+    const key = state.history.present.doc.cells[0].key;
+    state = sessionReducer(state, {
+      type: "edit",
+      edit: { type: "setSource", key, source: "# Changed" },
+    });
+    doc.state = state;
+    const dirty = renderToString(
+      createElement(NotebookPane, {
+        path: "/r/eda.ipynb",
+        visible: true,
+        onSetView: () => {},
+      }),
+    );
+    expect(dirty).toMatch(
+      /<button[^>]*disabled=""[^>]*title="Save to view the raw file"[^>]*>Raw/,
+    );
+    expect(dirty).toMatch(/<button[^>]*title="Save"/);
+    expect(dirty).not.toContain("changed on disk");
+
+    doc.state = sessionReducer(state, {
+      type: "read",
+      result: {
+        kind: "text",
+        content: fixture.replace("Analysis", "Other"),
+        size: 1,
+        mtime: 9,
+      },
+    });
+    const conflict = renderToString(
+      createElement(NotebookPane, {
+        path: "/r/eda.ipynb",
+        visible: true,
+        onSetView: () => {},
+      }),
+    );
+    expect(conflict).toContain("changed on disk while you had unsaved changes");
+    expect(conflict).toContain("Reload from disk");
+    expect(conflict).toContain("Keep my version");
   });
 
   it("explains a file it cannot parse and offers the raw view", () => {

@@ -207,6 +207,7 @@ function hydrateTab(
         cold: true,
         title: basename(s.path),
         path: s.path,
+        dirty: false,
       } satisfies NotebookTab;
     default:
       return null;

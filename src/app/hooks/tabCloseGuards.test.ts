@@ -134,11 +134,17 @@ describe("path-backed explorer mutations", () => {
     const notebook = {
       ...markdown(5, "/repo/eda.ipynb"),
       kind: "notebook" as const,
+      dirty: false,
     };
     expect(hasOpenPathTab([notebook], "/repo")).toBe(true);
     expect(deletedPathTabs([notebook], ["/repo"])).toEqual({
       dirtyIds: [],
       cleanIds: [5],
+    });
+    // Unsaved notebook edits get the same confirmation as a dirty editor.
+    expect(deletedPathTabs([{ ...notebook, dirty: true }], ["/repo"])).toEqual({
+      dirtyIds: [5],
+      cleanIds: [],
     });
   });
 

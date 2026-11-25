@@ -9,7 +9,6 @@ import {
   mergeStreams,
   notebookLanguage,
   pickDisplayMime,
-  renderKeys,
 } from "./display";
 
 describe("pickDisplayMime", () => {
@@ -166,14 +165,6 @@ describe("kernelLabel", () => {
     expect(kernelLabel({ language_info: { name: "julia" } })).toBe("julia");
     expect(kernelLabel({ kernelspec: [] as never })).toBeNull();
     expect(kernelLabel({})).toBeNull();
-  });
-});
-
-describe("renderKeys", () => {
-  it("uses unique cell ids and falls back to positions", () => {
-    expect(
-      renderKeys([{ id: "a" }, { id: null }, { id: "a" }, { id: "b" }]),
-    ).toEqual(["id:a", "at:1", "at:2", "id:b"]);
   });
 });
 

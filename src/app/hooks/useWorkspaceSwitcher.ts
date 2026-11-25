@@ -1,7 +1,7 @@
 import { type RefObject, useCallback, useEffect, useState } from "react";
 import { homeDir } from "@tauri-apps/api/path";
 import { native } from "@/modules/ai/lib/native";
-import type { Tab } from "@/modules/tabs";
+import { isDirtyTab, type Tab } from "@/modules/tabs";
 import {
   getWslHome,
   LOCAL_WORKSPACE,
@@ -80,7 +80,7 @@ export function useWorkspaceSwitcher({
       ) {
         return false;
       }
-      const dirty = tabsRef.current.some((t) => t.kind === "editor" && t.dirty);
+      const dirty = tabsRef.current.some(isDirtyTab);
       if (dirty) {
         window.alert(
           "Save or close unsaved editor tabs before switching workspace.",

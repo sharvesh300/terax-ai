@@ -10,6 +10,7 @@ import {
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import {
   type CloseTabsPlan,
+  isDirtyTab,
   nextActiveInSpace,
   planCloseOtherTabs,
   planCloseTabsToRight,
@@ -66,7 +67,7 @@ export function useTabCloseGuards({
       // dialog entirely so confirming it doesn't appear to silently fail.
       if (nextActiveInSpace(tabs, id) === null) return;
       const t = tabs.find((x) => x.id === id);
-      if (t?.kind === "editor" && t.dirty) {
+      if (t && isDirtyTab(t)) {
         setPendingCloseTab(id);
         return;
       }
@@ -87,9 +88,7 @@ export function useTabCloseGuards({
     const close = new Set(closeIds);
     const affected = tabsRef.current.filter((tab) => close.has(tab.id));
     return {
-      dirtyIds: affected
-        .filter((tab) => tab.kind === "editor" && tab.dirty)
-        .map((tab) => tab.id),
+      dirtyIds: affected.filter(isDirtyTab).map((tab) => tab.id),
       leafIds: affected
         .filter((tab) => tab.kind === "terminal")
         .flatMap((tab) => leafIds(tab.paneTree)),

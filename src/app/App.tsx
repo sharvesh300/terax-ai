@@ -80,6 +80,7 @@ import {
   useSpaces,
   useSpacesBoot,
 } from "@/modules/spaces";
+import type { NotebookPaneHandle } from "@/modules/notebook";
 import { StatusBar } from "@/modules/statusbar";
 import {
   TabSwitcherHud,
@@ -219,6 +220,7 @@ export default function App() {
   const searchInlineRef = useRef<SearchInlineHandle | null>(null);
   const terminalRefs = useRef<Map<number, TerminalPaneHandle>>(new Map());
   const editorRefs = useRef<Map<number, EditorPaneHandle>>(new Map());
+  const notebookRefs = useRef<Map<number, NotebookPaneHandle>>(new Map());
   const previewRefs = useRef<Map<number, PreviewPaneHandle>>(new Map());
   const [activeEditorHandle, setActiveEditorHandle] =
     useState<EditorPaneHandle | null>(null);
@@ -238,6 +240,7 @@ export default function App() {
     searchAddons.current.clear();
     terminalRefs.current.clear();
     editorRefs.current.clear();
+    notebookRefs.current.clear();
     previewRefs.current.clear();
     setActiveSearchAddon(null);
     setActiveEditorHandle(null);
@@ -408,6 +411,7 @@ export default function App() {
       // the effect below as the pane tree changes; only the tab-id-keyed
       // handles need explicit cleanup here.
       editorRefs.current.delete(id);
+      notebookRefs.current.delete(id);
       previewRefs.current.delete(id);
       closeTab(id);
     },
@@ -419,6 +423,7 @@ export default function App() {
       const closedIds = closeTabs(anchorId, plan);
       for (const id of closedIds) {
         editorRefs.current.delete(id);
+        notebookRefs.current.delete(id);
         previewRefs.current.delete(id);
       }
     },
@@ -968,10 +973,18 @@ export default function App() {
       "view.zoomOut": zoomOut,
       "view.zoomReset": zoomReset,
       "view.zenMode": () => setZenMode((v) => !v),
-      "editor.undo": () => editorRefs.current.get(activeId)?.undo(),
-      "editor.redo": () => editorRefs.current.get(activeId)?.redo(),
+      "editor.undo": () =>
+        (
+          editorRefs.current.get(activeId) ?? notebookRefs.current.get(activeId)
+        )?.undo(),
+      "editor.redo": () =>
+        (
+          editorRefs.current.get(activeId) ?? notebookRefs.current.get(activeId)
+        )?.redo(),
       "editor.save": () => {
-        void editorRefs.current.get(activeId)?.save();
+        void (
+          editorRefs.current.get(activeId) ?? notebookRefs.current.get(activeId)
+        )?.save();
       },
       "editor.aiComplete": () =>
         editorRefs.current.get(activeId)?.triggerAiComplete(),
@@ -1015,13 +1028,11 @@ export default function App() {
           ? leafIds(activeTab.paneTree).length
           : null;
       if (shouldDisablePaneSwapShortcut(id, terminalPaneCount)) return true;
-      if (
-        id === "editor.undo" ||
-        id === "editor.redo" ||
-        id === "editor.save" ||
-        id === "editor.aiComplete" ||
-        id === "editor.codeComplete"
-      ) {
+      if (id === "editor.undo" || id === "editor.redo" || id === "editor.save") {
+        // Notebooks have their own save and undo history.
+        return activeTab?.kind !== "editor" && activeTab?.kind !== "notebook";
+      }
+      if (id === "editor.aiComplete" || id === "editor.codeComplete") {
         return activeTab?.kind !== "editor";
       }
       if (id === "ai.askSelection") {
@@ -1089,6 +1100,14 @@ export default function App() {
       if (id === activeId) setActiveEditorHandle(h);
     },
     [activeId],
+  );
+
+  const registerNotebookHandle = useCallback(
+    (id: number, h: NotebookPaneHandle | null) => {
+      if (h) notebookRefs.current.set(id, h);
+      else notebookRefs.current.delete(id);
+    },
+    [],
   );
 
   const registerPreviewHandle = useCallback(
@@ -1562,6 +1581,7 @@ export default function App() {
                         onFocusLeaf={handleFocusLeaf}
                         registerEditorHandle={registerEditorHandle}
                         onEditorDirtyChange={handleEditorDirty}
+                        registerNotebookHandle={registerNotebookHandle}
                         onEditorCloseTab={disposeTab}
                         registerPreviewHandle={registerPreviewHandle}
                         onPreviewUrlChange={handlePreviewUrl}

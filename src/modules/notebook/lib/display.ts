@@ -156,23 +156,6 @@ export function kernelLabel(metadata: JsonObject): string | null {
   return fromSpec ?? (isJsonObject(info) ? str(info.name) : null);
 }
 
-/**
- * React keys that survive a reload of the file: the cell id when it is
- * unique, else the position. Parsed keys are fresh on every read, which
- * would remount every cell each time the file changes on disk.
- */
-export function renderKeys(
-  cells: readonly { readonly id: string | null }[],
-): string[] {
-  const seen = new Set<string>();
-  return cells.map((c, i) => {
-    const key =
-      c.id !== null && !seen.has(`id:${c.id}`) ? `id:${c.id}` : `at:${i}`;
-    seen.add(key);
-    return key;
-  });
-}
-
 // Kernel language names that differ from the highlighter's names.
 const LANGUAGE_ALIASES: Readonly<Record<string, string>> = {
   ipython: "python",

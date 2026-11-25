@@ -1,4 +1,9 @@
-import { type CloseTabsPlan, isFileTab, type Tab } from "@/modules/tabs";
+import {
+  type CloseTabsPlan,
+  isDirtyTab,
+  isFileTab,
+  type Tab,
+} from "@/modules/tabs";
 
 function normalizePath(path: string): string {
   return path.replace(/\\/g, "/");
@@ -69,7 +74,7 @@ export function deletedPathTabs(
   for (const tab of tabs) {
     if (!isFileTab(tab)) continue;
     if (!paths.some((path) => pathAtOrUnder(tab.path, path))) continue;
-    (tab.kind === "editor" && tab.dirty ? dirtyIds : cleanIds).push(tab.id);
+    (isDirtyTab(tab) ? dirtyIds : cleanIds).push(tab.id);
   }
   return { dirtyIds, cleanIds };
 }

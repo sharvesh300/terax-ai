@@ -13,6 +13,7 @@ type EditorStackProps = ComponentProps<typeof EditorStack>;
 type PreviewStackProps = ComponentProps<typeof PreviewStack>;
 type AiDiffStackProps = ComponentProps<typeof AiDiffStack>;
 type GitHistoryStackProps = ComponentProps<typeof GitHistoryStack>;
+type NotebookStackProps = ComponentProps<typeof NotebookStack>;
 
 type Props = {
   tabs: Tab[];
@@ -26,6 +27,7 @@ type Props = {
   registerEditorHandle: EditorStackProps["registerHandle"];
   onEditorDirtyChange: EditorStackProps["onDirtyChange"];
   onEditorCloseTab: EditorStackProps["onCloseTab"];
+  registerNotebookHandle: NotebookStackProps["registerHandle"];
   registerPreviewHandle: PreviewStackProps["registerHandle"];
   onPreviewUrlChange: PreviewStackProps["onUrlChange"];
   onAiDiffAccept: AiDiffStackProps["onAccept"];
@@ -57,6 +59,7 @@ export function WorkspaceSurface({
   registerEditorHandle,
   onEditorDirtyChange,
   onEditorCloseTab,
+  registerNotebookHandle,
   registerPreviewHandle,
   onPreviewUrlChange,
   onAiDiffAccept,
@@ -137,6 +140,8 @@ export function WorkspaceSurface({
           tabs={tabs}
           activeId={activeId}
           onSetDocumentView={onSetDocumentView}
+          registerHandle={registerNotebookHandle}
+          onDirtyChange={onEditorDirtyChange}
         />
       </div>
       <div

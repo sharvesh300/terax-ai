@@ -8,25 +8,32 @@ import { SourceBlock } from "./SourceBlock";
 
 const prompt = (n: number | null) => `[${n ?? " "}]:`;
 
-/** One cell, read-only. Memoized: a reload re-renders only changed cells. */
+/** One cell as shown in the notebook. Memoized: edits re-render only changed cells. */
 export const NotebookCellView = memo(function NotebookCellView({
   cell,
   language,
+  editor = null,
+  onSourceClick,
 }: {
   cell: NotebookCell;
   /** The notebook's code language, for highlighting code cells. */
   language: string | null;
+  /** The live editor, shown in place of the source while editing. */
+  editor?: ReactNode;
+  /** Clicking a code or raw cell's source starts editing it. */
+  onSourceClick?: () => void;
 }) {
   if (cell.cellType === "markdown") {
     return (
       <Row cell>
-        {cell.source.trim() === "" ? (
-          <p className="text-[12px] text-muted-foreground italic">
-            Empty markdown cell
-          </p>
-        ) : (
-          <MarkdownCell source={cell.source} attachments={cell.attachments} />
-        )}
+        {editor ??
+          (cell.source.trim() === "" ? (
+            <p className="text-[12px] text-muted-foreground italic">
+              Empty markdown cell — double-click to edit
+            </p>
+          ) : (
+            <MarkdownCell source={cell.source} attachments={cell.attachments} />
+          ))}
       </Row>
     );
   }
@@ -34,20 +41,52 @@ export const NotebookCellView = memo(function NotebookCellView({
   if (cell.cellType === "raw") {
     return (
       <Row cell gutter={<span>raw</span>}>
-        <SourceBlock source={cell.source} muted />
+        {editor ?? (
+          <Clickable onClick={onSourceClick}>
+            <SourceBlock source={cell.source} muted />
+          </Clickable>
+        )}
       </Row>
     );
   }
 
-  return <CodeCell cell={cell} language={language} />;
+  return (
+    <CodeCell
+      cell={cell}
+      language={language}
+      editor={editor}
+      onSourceClick={onSourceClick}
+    />
+  );
 });
+
+/** Source that starts editing on click, without nesting a button in a pre. */
+function Clickable({
+  onClick,
+  children,
+}: {
+  onClick?: () => void;
+  children: ReactNode;
+}) {
+  if (!onClick) return <>{children}</>;
+  return (
+    // biome-ignore lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions: Enter on the selected cell edits it (command mode).
+    <div onClick={onClick} className="cursor-text">
+      {children}
+    </div>
+  );
+}
 
 function CodeCell({
   cell,
   language,
+  editor,
+  onSourceClick,
 }: {
   cell: NotebookCell;
   language: string | null;
+  editor: ReactNode;
+  onSourceClick?: () => void;
 }) {
   const view = useMemo(() => cellView(cell.metadata), [cell.metadata]);
   const outputs = useMemo(() => mergeStreams(cell.outputs), [cell.outputs]);
@@ -60,11 +99,16 @@ function CodeCell({
   return (
     <div className="terax-notebook-cell flex flex-col gap-1.5">
       <Row gutter={prompt(cell.executionCount)}>
-        {sourceHidden ? (
-          <Reveal onClick={() => setShowSource(true)}>Show hidden code</Reveal>
-        ) : (
-          <SourceBlock source={cell.source} language={language} />
-        )}
+        {editor ??
+          (sourceHidden ? (
+            <Reveal onClick={() => setShowSource(true)}>
+              Show hidden code
+            </Reveal>
+          ) : (
+            <Clickable onClick={onSourceClick}>
+              <SourceBlock source={cell.source} language={language} />
+            </Clickable>
+          ))}
       </Row>
       {outputs.length > 0 && outputsHidden && (
         <Row>

@@ -55,6 +55,7 @@ import { selectTabAgentStatus } from "./lib/tabAgentStatus";
 import { labelFor } from "./lib/tabLabel";
 import {
   type EditorTab,
+  isDirtyTab,
   isFileTab,
   type Tab,
   type TerminalTab,
@@ -474,7 +475,7 @@ export function TabBar({
                     <span className={cn("truncate", isPreview && "italic")}>
                       {labelFor(t)}
                     </span>
-                    {t.kind === "editor" && t.dirty ? (
+                    {isDirtyTab(t) ? (
                       <span
                         aria-label="Unsaved changes"
                         className="size-1.5 shrink-0 rounded-full bg-foreground/70"

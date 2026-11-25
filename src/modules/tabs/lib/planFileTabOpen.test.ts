@@ -204,6 +204,7 @@ describe("notebook tabs", () => {
       spaceId: "one",
       title: "eda.ipynb",
       path: "/r/eda.ipynb",
+      dirty: false,
     });
     const none = planRenderedTabOpen([terminal], "/r/main.py", "one", () => {
       throw new Error("should not allocate");
@@ -234,6 +235,7 @@ describe("planDocumentView", () => {
     spaceId: "one",
     title: "eda.ipynb",
     path: "/r/eda.ipynb",
+    dirty: false,
   };
 
   it("flips a notebook to the raw editor and back", () => {
@@ -263,6 +265,17 @@ describe("planDocumentView", () => {
     const back = planDocumentView(raw, "rendered");
     expect(planDocumentView(back, "raw")).toMatchObject({
       overrideLanguage: "json",
+    });
+  });
+
+  it("keeps a notebook with unsaved edits in the notebook view", () => {
+    const dirty = { ...notebook, dirty: true } as Tab;
+    expect(planDocumentView(dirty, "raw")).toBe(dirty);
+    expect(
+      planDocumentView(planDocumentView(notebook, "raw"), "rendered"),
+    ).toMatchObject({
+      kind: "notebook",
+      dirty: false,
     });
   });
 

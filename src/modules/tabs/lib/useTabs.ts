@@ -82,7 +82,11 @@ type RenderedTabBase = TabBase & {
 
 export type MarkdownTab = RenderedTabBase & { kind: "markdown" };
 
-export type NotebookTab = RenderedTabBase & { kind: "notebook" };
+export type NotebookTab = RenderedTabBase & {
+  kind: "notebook";
+  /** Unsaved edits in the notebook view. */
+  dirty: boolean;
+};
 
 /** Files that open in a rendered view and flip to the raw editor on demand. */
 export type RenderedTab = MarkdownTab | NotebookTab;
@@ -91,6 +95,11 @@ export function renderedKindFor(path: string): RenderedTab["kind"] | null {
   if (isMarkdownPath(path)) return "markdown";
   if (isNotebookPath(path)) return "notebook";
   return null;
+}
+
+/** Tabs holding edits not yet written to disk. */
+export function isDirtyTab(tab: Tab): boolean {
+  return (tab.kind === "editor" || tab.kind === "notebook") && tab.dirty;
 }
 
 /** Tabs that show a file from disk at `path`. */
@@ -216,10 +225,12 @@ export function planRenderedTabOpen(
   if (existing) return { tabs, tabId: existing.id };
 
   const tabId = allocId();
-  return {
-    tabs: [...tabs, { id: tabId, kind, spaceId, title: basename(path), path }],
-    tabId,
-  };
+  const title = basename(path);
+  const tab: RenderedTab =
+    kind === "notebook"
+      ? { id: tabId, kind, spaceId, title, path, dirty: false }
+      : { id: tabId, kind, spaceId, title, path };
+  return { tabs: [...tabs, tab], tabId };
 }
 
 /**
@@ -231,6 +242,8 @@ export function planDocumentView(t: Tab, mode: "rendered" | "raw"): Tab {
   if (!isFileTab(t)) return t;
   const kind = renderedKindFor(t.path);
   if (kind === null) return t;
+  // Unsaved notebook edits live in the notebook view, not in the file.
+  if (mode === "raw" && t.kind === "notebook" && t.dirty) return t;
   if (mode === "raw" && t.kind !== "editor") {
     return {
       id: t.id,
@@ -246,15 +259,17 @@ export function planDocumentView(t: Tab, mode: "rendered" | "raw"): Tab {
   }
   if (mode === "rendered" && t.kind === "editor") {
     if (t.dirty) return t;
-    return {
+    const base = {
       id: t.id,
-      kind,
       spaceId: t.spaceId,
       cold: t.cold,
       title: t.title,
       path: t.path,
       overrideLanguage: t.overrideLanguage ?? null,
     };
+    return kind === "notebook"
+      ? { ...base, kind, dirty: false }
+      : { ...base, kind };
   }
   return t;
 }
@@ -1267,11 +1282,19 @@ export function useTabs(initial?: Partial<TerminalTab>) {
               }),
             };
           }
-          if (x.kind === "markdown" || x.kind === "notebook") {
+          if (x.kind === "markdown") {
             return {
               ...x,
               ...(patch.title !== undefined && { title: patch.title }),
               ...(patch.path !== undefined && { path: patch.path }),
+            };
+          }
+          if (x.kind === "notebook") {
+            return {
+              ...x,
+              ...(patch.title !== undefined && { title: patch.title }),
+              ...(patch.path !== undefined && { path: patch.path }),
+              ...(patch.dirty !== undefined && { dirty: patch.dirty }),
             };
           }
           // editor tab: auto-promote from preview the moment the file becomes dirty.

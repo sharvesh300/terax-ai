@@ -16,7 +16,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { setConfirmCloseRunningTerminal } from "@/modules/settings/store";
-import type { Tab } from "@/modules/tabs";
+import { isDirtyTab, type Tab } from "@/modules/tabs";
 import { useId, useState } from "react";
 
 type Props = {
@@ -92,7 +92,7 @@ function closeManyMessage(pending: CloseManyPending, tabs: Tab[]): string {
   const busyCount = busyLeafIds.length;
   if (dirtyCount === 1 && busyCount === 0) {
     const dirty = tabs.find(
-      (tab) => tab.kind === "editor" && dirtyIds.includes(tab.id),
+      (tab) => isDirtyTab(tab) && dirtyIds.includes(tab.id),
     );
     return dirty?.title
       ? `"${dirty.title}" has unsaved changes. Close it anyway?`
