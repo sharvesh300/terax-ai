@@ -1,31 +1,117 @@
 import { isHighlightable } from "@/components/ai-elements/chat-code-lezer";
 import { describe, expect, it } from "vitest";
 import {
-  applyCarriageReturns,
+  cellView,
   clipLines,
   errorText,
   imageSrc,
   kernelLabel,
+  mergeStreams,
   notebookLanguage,
   pickDisplayMime,
   renderKeys,
-  stripAnsi,
-  terminalText,
 } from "./display";
 
 describe("pickDisplayMime", () => {
-  it("prefers images over plain text and skips what it cannot show", () => {
+  it("ranks outputs as JupyterLab does, within what this view shows", () => {
     expect(
       pickDisplayMime({ "text/plain": "<Figure>", "image/png": "iVBO" }),
     ).toBe("image/png");
     expect(
       pickDisplayMime({ "text/html": "<table/>", "text/plain": "   a" }),
-    ).toBe("text/plain");
+    ).toBe("text/html");
+    expect(
+      pickDisplayMime({
+        "text/latex": "$x$",
+        "image/png": "iVBO",
+        "text/plain": "x",
+      }),
+    ).toBe("text/latex");
+    expect(
+      pickDisplayMime({ "application/json": { a: 1 }, "text/plain": "{}" }),
+    ).toBe("application/json");
     expect(
       pickDisplayMime({ "application/vnd.plotly.v1+json": {} }),
     ).toBeNull();
     // A JSON value under a text type is malformed, not displayable.
     expect(pickDisplayMime({ "text/plain": { x: 1 } })).toBeNull();
+  });
+
+  it("passes over HTML that needs scripts unless nothing else exists", () => {
+    const plotly = '<div id="p"></div><script>Plotly.newPlot("p")</script>';
+    expect(pickDisplayMime({ "text/html": plotly, "image/png": "iVBO" })).toBe(
+      "image/png",
+    );
+    expect(
+      pickDisplayMime({ "text/html": plotly, "text/plain": "Figure" }),
+    ).toBe("text/plain");
+    expect(pickDisplayMime({ "text/html": plotly })).toBe("text/html");
+  });
+
+  it("falls back to text for HTML too large to parse", () => {
+    const huge = `<p>${"x".repeat(2_000_001)}</p>`;
+    expect(pickDisplayMime({ "text/html": huge, "text/plain": "x" })).toBe(
+      "text/plain",
+    );
+  });
+});
+
+describe("errorText", () => {
+  it("keeps the traceback's colours for the renderer", () => {
+    expect(
+      errorText({
+        outputType: "error",
+        ename: "E",
+        evalue: "v",
+        traceback: ["\x1b[31mline 1\x1b[0m", "E: v"],
+        extra: {},
+      }),
+    ).toBe("\x1b[31mline 1\x1b[0m\nE: v");
+    expect(
+      errorText({
+        outputType: "error",
+        ename: "E",
+        evalue: "v",
+        traceback: [],
+        extra: {},
+      }),
+    ).toBe("E: v");
+  });
+});
+
+describe("mergeStreams", () => {
+  it("joins consecutive chunks of the same stream only", () => {
+    const s = (name: string, text: string) =>
+      ({ outputType: "stream", name, text, extra: {} }) as const;
+    const merged = mergeStreams([
+      s("stdout", "a"),
+      s("stdout", "b"),
+      s("stderr", "!"),
+      s("stdout", "c"),
+    ]);
+    expect(merged.map((o) => o.outputType === "stream" && o.text)).toEqual([
+      "ab",
+      "!",
+      "c",
+    ]);
+  });
+});
+
+describe("cellView", () => {
+  it("reads JupyterLab and classic Notebook view flags", () => {
+    expect(cellView({})).toEqual({
+      sourceHidden: false,
+      outputsHidden: false,
+      scrolled: false,
+    });
+    expect(
+      cellView({
+        jupyter: { source_hidden: true, outputs_hidden: true },
+        scrolled: true,
+      }),
+    ).toEqual({ sourceHidden: true, outputsHidden: true, scrolled: true });
+    expect(cellView({ collapsed: true }).outputsHidden).toBe(true);
+    expect(cellView({ scrolled: "auto" }).scrolled).toBe(false);
   });
 });
 
@@ -48,42 +134,6 @@ describe("imageSrc", () => {
     expect(src).toBe(
       `data:image/svg+xml;charset=utf-8,${encodeURIComponent('<svg onload="x()"></svg>')}`,
     );
-  });
-});
-
-describe("terminal text", () => {
-  it("strips colours, OSC titles and hyperlinks", () => {
-    expect(stripAnsi("\x1b[0;31mError\x1b[0m: x")).toBe("Error: x");
-    expect(stripAnsi("\x1b]0;title\x07ok")).toBe("ok");
-    expect(stripAnsi("\x1b]8;;https://a\x1b\\link\x1b]8;;\x1b\\")).toBe("link");
-  });
-
-  it("shows only the final state of carriage-return progress bars", () => {
-    expect(applyCarriageReturns("10%\r50%\r100%\ndone")).toBe("100%\ndone");
-    expect(applyCarriageReturns("abcdef\rXY")).toBe("XYcdef");
-    expect(applyCarriageReturns("a\r\nb")).toBe("a\nb");
-  });
-
-  it("joins tracebacks and falls back to the exception name", () => {
-    expect(
-      errorText({
-        outputType: "error",
-        ename: "E",
-        evalue: "v",
-        traceback: ["\x1b[31mline 1\x1b[0m", "E: v"],
-        extra: {},
-      }),
-    ).toBe("line 1\nE: v");
-    expect(
-      errorText({
-        outputType: "error",
-        ename: "E",
-        evalue: "v",
-        traceback: [],
-        extra: {},
-      }),
-    ).toBe("E: v");
-    expect(terminalText("\x1b[1m50%\r\x1b[1m99%")).toBe("99%");
   });
 });
 

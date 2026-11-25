@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
-import { memo, type ReactNode } from "react";
+import { memo, type ReactNode, useMemo, useState } from "react";
+import { cellView, mergeStreams } from "../lib/display";
 import type { NotebookCell } from "../model";
 import { MarkdownCell } from "./MarkdownCell";
 import { NotebookOutputView } from "./NotebookOutputView";
@@ -38,30 +39,87 @@ export const NotebookCellView = memo(function NotebookCellView({
     );
   }
 
+  return <CodeCell cell={cell} language={language} />;
+});
+
+function CodeCell({
+  cell,
+  language,
+}: {
+  cell: NotebookCell;
+  language: string | null;
+}) {
+  const view = useMemo(() => cellView(cell.metadata), [cell.metadata]);
+  const outputs = useMemo(() => mergeStreams(cell.outputs), [cell.outputs]);
+  // Hidden parts open for this view only; the file keeps its flags.
+  const [showSource, setShowSource] = useState(false);
+  const [showOutputs, setShowOutputs] = useState(false);
+  const sourceHidden = view.sourceHidden && !showSource;
+  const outputsHidden = view.outputsHidden && !showOutputs;
+
   return (
     <div className="terax-notebook-cell flex flex-col gap-1.5">
       <Row gutter={prompt(cell.executionCount)}>
-        <SourceBlock source={cell.source} language={language} />
+        {sourceHidden ? (
+          <Reveal onClick={() => setShowSource(true)}>Show hidden code</Reveal>
+        ) : (
+          <SourceBlock source={cell.source} language={language} />
+        )}
       </Row>
-      {cell.outputs.map((output, i) => (
-        <Row
-          // Outputs have no identity of their own; order is stable per cell.
-          // biome-ignore lint/suspicious/noArrayIndexKey: see above.
-          key={i}
-          gutter={
-            output.outputType === "execute_result" ? (
-              <span className="text-destructive/70">
-                {`Out${prompt(output.executionCount)}`}
-              </span>
-            ) : null
-          }
-        >
-          <NotebookOutputView output={output} />
+      {outputs.length > 0 && outputsHidden && (
+        <Row>
+          <Reveal onClick={() => setShowOutputs(true)}>
+            Show {outputs.length} hidden{" "}
+            {outputs.length === 1 ? "output" : "outputs"}
+          </Reveal>
         </Row>
-      ))}
+      )}
+      {outputs.length > 0 && !outputsHidden && (
+        <div
+          className={cn(
+            "flex flex-col gap-1.5",
+            view.scrolled && "max-h-[28rem] overflow-y-auto",
+          )}
+        >
+          {outputs.map((output, i) => (
+            <Row
+              // Outputs have no identity of their own; order is stable per cell.
+              // biome-ignore lint/suspicious/noArrayIndexKey: see above.
+              key={i}
+              gutter={
+                output.outputType === "execute_result" ? (
+                  <span className="text-destructive/70">
+                    {`Out${prompt(output.executionCount)}`}
+                  </span>
+                ) : null
+              }
+            >
+              <NotebookOutputView output={output} />
+            </Row>
+          ))}
+        </div>
+      )}
     </div>
   );
-});
+}
+
+function Reveal({
+  onClick,
+  children,
+}: {
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full rounded-md border border-dashed border-border/70 px-3 py-1.5 text-left text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground"
+    >
+      {children}
+    </button>
+  );
+}
 
 /** Prompt gutter on the left, content on the right, as in Jupyter. */
 function Row({

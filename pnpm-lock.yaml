@@ -221,6 +221,15 @@ importers:
       codemirror-languageserver:
         specifier: ^1.22.1
         version: 1.22.1(@codemirror/autocomplete@6.20.3)(@codemirror/lint@6.9.7)(@codemirror/state@6.7.6)(@codemirror/view@6.43.13)
+      hast-util-raw:
+        specifier: 9.1.0
+        version: 9.1.0
+      hast-util-sanitize:
+        specifier: 5.0.2
+        version: 5.0.2
+      hast-util-to-jsx-runtime:
+        specifier: 2.3.6
+        version: 2.3.6
       katex:
         specifier: 0.16.47
         version: 0.16.47
@@ -273,6 +282,9 @@ importers:
       '@tauri-apps/cli':
         specifier: ^2.12.0
         version: 2.12.0
+      '@types/hast':
+        specifier: 3.0.5
+        version: 3.0.5
       '@types/node':
         specifier: ^25.9.3
         version: 25.9.3

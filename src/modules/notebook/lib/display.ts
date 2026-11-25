@@ -1,5 +1,6 @@
-// Pure helpers for showing a notebook read-only. Rich output (HTML, JS,
-// widgets) and ANSI colours come later; this is the safe baseline.
+// Pure helpers for showing a notebook read-only. Nothing in an output runs:
+// HTML is sanitized, SVG goes through <img>, JavaScript and widgets fall back
+// to their text form.
 
 import {
   isJsonObject,
@@ -8,26 +9,49 @@ import {
   type MimeBundle,
   type NotebookOutput,
 } from "../model";
+import { hasScripts, MAX_HTML_CHARS } from "./html";
 
 const BASE64_IMAGES = new Set(["image/png", "image/jpeg", "image/gif"]);
 
-// Most specific first. Only types this view can show without running code.
+// Richest first, as JupyterLab ranks them, limited to what this view shows.
 const DISPLAY_ORDER = [
+  "text/html",
+  "text/markdown",
+  "text/latex",
+  "image/svg+xml",
   "image/png",
   "image/jpeg",
   "image/gif",
-  "image/svg+xml",
+  "application/json",
   "text/plain",
 ] as const;
 
 export type DisplayMime = (typeof DISPLAY_ORDER)[number];
 
-/** The richest MIME type in a bundle that this view can show, if any. */
+function usable(mime: DisplayMime, value: JsonValue | undefined): boolean {
+  if (value === undefined) return false;
+  if (mime === "application/json") return true;
+  if (typeof value !== "string") return false;
+  return mime !== "text/html" || value.length <= MAX_HTML_CHARS;
+}
+
+/**
+ * The richest MIME type in a bundle that this view can show, if any. HTML
+ * that needs scripts (Plotly, Bokeh, widgets) is a blank box without them, so
+ * any other form wins; it is used only when nothing else exists.
+ */
 export function pickDisplayMime(data: MimeBundle): DisplayMime | null {
+  let scripted: DisplayMime | null = null;
   for (const mime of DISPLAY_ORDER) {
-    if (typeof data[mime] === "string") return mime;
+    const value = data[mime];
+    if (!usable(mime, value)) continue;
+    if (mime === "text/html" && hasScripts(value as string)) {
+      scripted = mime;
+      continue;
+    }
+    return mime;
   }
-  return null;
+  return scripted;
 }
 
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
@@ -47,44 +71,51 @@ export function imageSrc(mime: string, value: JsonValue): string | null {
   return `data:${mime};base64,${b64}`;
 }
 
-// CSI (colours, cursor moves) and OSC (titles, hyperlinks) sequences.
-const ANSI =
-  /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]/g;
-
-export function stripAnsi(text: string): string {
-  return text.includes("\x1b") ? text.replace(ANSI, "") : text;
-}
-
-/**
- * Applies carriage returns the way a terminal shows them: text after a `\r`
- * overwrites its line, so progress bars show their final state only.
- */
-export function applyCarriageReturns(text: string): string {
-  if (!text.includes("\r")) return text;
-  return text
-    .replace(/\r\n/g, "\n")
-    .split("\n")
-    .map((line) => {
-      if (!line.includes("\r")) return line;
-      let out = "";
-      for (const part of line.split("\r")) {
-        out = part + out.slice(part.length);
-      }
-      return out;
-    })
-    .join("\n");
-}
-
-/** Terminal-ish output text (streams, tracebacks) as plain text. */
-export function terminalText(text: string): string {
-  return applyCarriageReturns(stripAnsi(text));
-}
-
+/** A traceback as terminal text (ANSI colours kept for the renderer). */
 export function errorText(
   o: Extract<NotebookOutput, { outputType: "error" }>,
 ): string {
-  if (o.traceback.length > 0) return terminalText(o.traceback.join("\n"));
+  if (o.traceback.length > 0) return o.traceback.join("\n");
   return o.evalue ? `${o.ename}: ${o.evalue}` : o.ename;
+}
+
+/**
+ * Consecutive chunks of one stream as one output, as Jupyter shows them
+ * (files written mid-run can hold them apart).
+ */
+export function mergeStreams(
+  outputs: readonly NotebookOutput[],
+): NotebookOutput[] {
+  const out: NotebookOutput[] = [];
+  for (const o of outputs) {
+    const last = out[out.length - 1];
+    if (
+      o.outputType === "stream" &&
+      last?.outputType === "stream" &&
+      last.name === o.name
+    ) {
+      out[out.length - 1] = { ...last, text: last.text + o.text };
+    } else out.push(o);
+  }
+  return out;
+}
+
+export type CellView = {
+  readonly sourceHidden: boolean;
+  readonly outputsHidden: boolean;
+  /** Long outputs scroll in a box instead of growing the page. */
+  readonly scrolled: boolean;
+};
+
+/** JupyterLab's (`jupyter.*_hidden`) and classic Notebook's view flags. */
+export function cellView(metadata: JsonObject): CellView {
+  const jupyter = isJsonObject(metadata.jupyter) ? metadata.jupyter : {};
+  return {
+    sourceHidden: jupyter.source_hidden === true,
+    outputsHidden:
+      jupyter.outputs_hidden === true || metadata.collapsed === true,
+    scrolled: metadata.scrolled === true,
+  };
 }
 
 export type ClippedText = {

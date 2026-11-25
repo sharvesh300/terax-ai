@@ -512,6 +512,38 @@ html *::-webkit-scrollbar {
   contain-intrinsic-size: auto 80px;
 }
 
+/* Sanitized HTML outputs (pandas tables and the like). */
+.terax-nb-html table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  margin: 0.25rem 0;
+}
+.terax-nb-html th,
+.terax-nb-html td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.25rem 0.6rem;
+  text-align: right;
+  white-space: nowrap;
+}
+.terax-nb-html thead th {
+  border-bottom-color: var(--muted-foreground);
+  font-weight: 600;
+}
+.terax-nb-html tbody th {
+  font-weight: 600;
+}
+.terax-nb-html tbody tr:nth-child(even) {
+  background: color-mix(in oklab, var(--muted) 55%, transparent);
+}
+.terax-nb-html a {
+  color: var(--primary);
+  text-decoration: underline;
+}
+.terax-nb-html img {
+  max-width: 100%;
+  height: auto;
+}
+
 /* File icons load lazily; a slot that was blank at mount fades its icon in. */
 @keyframes terax-icon-in {
   from {
