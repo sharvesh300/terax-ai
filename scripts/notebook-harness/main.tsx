@@ -8,6 +8,7 @@ import { ThemeProvider } from "@/modules/theme";
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { createRoot } from "react-dom/client";
 import { Toaster } from "sonner";
+import { fakeKernelCommand } from "./fakeKernel";
 
 const PATH = "/demo/eda.ipynb";
 const files = new Map<string, { text: string; mtime: number }>([
@@ -21,6 +22,7 @@ mockIPC(
   (cmd, args) => {
     const a = (args ?? {}) as Record<string, unknown>;
     log.push({ cmd, args });
+    if (cmd.startsWith("kernel_")) return fakeKernelCommand(cmd, a);
     switch (cmd) {
       case "fs_read_file": {
         const f = files.get(a.path as string);
