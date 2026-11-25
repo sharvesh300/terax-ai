@@ -77,6 +77,10 @@ futures-util = "0.3"
 tokio = { version = "1", default-features = false, features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
 tempfile = "3"
 which = "8.0.4"
+# Jupyter kernels: kernelspec discovery, launch and the ZeroMQ wire protocol
+# (HMAC via ring, shared with rustls).
+jupyter-zmq-client = "3.0.1"
+jupyter-protocol = "2.0.4"
 
 [dev-dependencies]
 terax-cli = { path = "crates/terax-cli" }

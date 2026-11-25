@@ -269,6 +269,7 @@ pub fn run() {
         .manage(git::watch::GitWatchState::default())
         .manage(history::HistoryState::default())
         .manage(lsp::LspState::default())
+        .manage(modules::kernel::KernelState::default())
         .manage(fs::supersede::Supersede::default())
         .manage(fs::index::FileIndexState::default())
         .manage({
@@ -325,6 +326,11 @@ pub fn run() {
             lsp::lsp_spawn,
             lsp::lsp_send,
             lsp::lsp_kill,
+            modules::kernel::kernel_list_specs,
+            modules::kernel::kernel_start,
+            modules::kernel::kernel_send,
+            modules::kernel::kernel_interrupt,
+            modules::kernel::kernel_shutdown,
             fs::search::fs_search,
             fs::search::fs_warm_index,
             fs::search::fs_list_files,
@@ -449,6 +455,9 @@ pub fn run() {
                     #[cfg(target_os = "macos")]
                     modules::window_presentation::macos::uninstall();
                     if let Some(state) = app.try_state::<lsp::LspState>() {
+                        state.kill_all();
+                    }
+                    if let Some(state) = app.try_state::<modules::kernel::KernelState>() {
                         state.kill_all();
                     }
                     if let Some(state) = app.try_state::<control::ControlState>() {
