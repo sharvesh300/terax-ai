@@ -88,10 +88,13 @@ export function markSaved(
  */
 export function applyExecutionToHistory(
   h: NotebookHistory,
-  ev: ExecutionEvent,
+  ev: ExecutionEvent | readonly ExecutionEvent[],
 ): NotebookHistory {
+  // A batch (one animation frame of kernel output) walks the history once.
+  const events = Array.isArray(ev) ? ev : [ev as ExecutionEvent];
   const map = (e: Entry): Entry => {
-    const doc = applyExecution(e.doc, ev);
+    let doc = e.doc;
+    for (const one of events) doc = applyExecution(doc, one);
     return doc === e.doc ? e : { ...e, doc };
   };
   const present = map(h.present);

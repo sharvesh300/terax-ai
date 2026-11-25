@@ -3,9 +3,11 @@
 
 import {
   applyEdit,
+  applyExecutionToHistory,
   commitEdit,
   createHistory,
   type EditContext,
+  type ExecutionEvent,
   isDirty,
   markSaved,
   type NotebookDocument,
@@ -71,7 +73,12 @@ export type SessionEvent =
       readonly disk: Disk;
     }
   /** The user chose to keep their edits over the changed file. */
-  | { readonly type: "keepMine" };
+  | { readonly type: "keepMine" }
+  /** Kernel output; reaches every undo state, never an undo step itself. */
+  | {
+      readonly type: "execution";
+      readonly events: readonly ExecutionEvent[];
+    };
 
 export const initialSession: SessionState = { kind: "loading" };
 
@@ -155,6 +162,13 @@ export function sessionReducer(
         disk: ev.disk,
         changedOnDisk: null,
       };
+
+    case "execution":
+      if (state.kind !== "ready" || ev.events.length === 0) return state;
+      return withHistory(
+        state,
+        applyExecutionToHistory(state.history, ev.events),
+      );
 
     // Their version becomes the known baseline, so the next save writes
     // over it without another conflict warning.

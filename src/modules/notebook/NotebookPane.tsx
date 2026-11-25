@@ -5,6 +5,7 @@ import { MarkdownViewToggle } from "@/modules/markdown";
 import { previewBoundary } from "@/modules/markdown/lib/assetPath";
 import {
   type ReactNode,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -19,6 +20,7 @@ import {
   NotebookEditor,
   type NotebookEditorHandle,
 } from "./components/NotebookEditor";
+import { useKernel } from "./kernel/useKernel";
 import { mayHaveImages } from "./lib/attachments";
 import { kernelLabel, notebookLanguage } from "./lib/display";
 import { sessionDirty } from "./lib/session";
@@ -67,6 +69,20 @@ export function NotebookPane({
   );
   const dirty = sessionDirty(state);
   const editorRef = useRef<NotebookEditorHandle>(null);
+
+  const stateRef = useRef(state);
+  useLayoutEffect(() => {
+    stateRef.current = state;
+  });
+  const kernel = useKernel({
+    path,
+    workspaceRoot,
+    dispatch,
+    getDoc: useCallback(() => {
+      const s = stateRef.current;
+      return s.kind === "ready" ? s.history.present.doc : null;
+    }, []),
+  });
 
   useEffect(() => {
     onDirtyChange?.(dirty);
@@ -147,6 +163,7 @@ export function NotebookPane({
                 dirty={dirty}
                 onSave={() => void save()}
                 summary={summary}
+                kernel={kernel}
               />
             )}
           </ReadyNotebook>

@@ -12,8 +12,13 @@ export type NotebookCommand =
   | { readonly type: "mergeBelow" }
   | { readonly type: "undo" }
   | { readonly type: "redo" }
-  /** Shift+Enter: select the next cell (running comes with the kernel). */
-  | { readonly type: "advance" };
+  /**
+   * Runs the selected cell (a markdown cell just renders), then: Shift+Enter
+   * moves to the next cell, Ctrl/Cmd+Enter stays, Alt+Enter inserts below.
+   */
+  | { readonly type: "run"; readonly after: "advance" | "stay" | "insert" }
+  | { readonly type: "interrupt" }
+  | { readonly type: "restart" };
 
 export type KeyPress = {
   readonly key: string;
@@ -23,31 +28,44 @@ export type KeyPress = {
   readonly altKey: boolean;
 };
 
+/** First keys of Jupyter's double presses: D D, I I, 0 0. */
+export type PendingKey = "d" | "i" | "0";
+
 export type KeyOutcome = {
   readonly command: NotebookCommand | null;
-  /** The first D of "D D" (delete) was pressed; the next key decides. */
-  readonly pendingDelete: boolean;
+  /** A first key was pressed; the next key decides. */
+  readonly pending: PendingKey | null;
 };
 
-const NONE: KeyOutcome = { command: null, pendingDelete: false };
+const NONE: KeyOutcome = { command: null, pending: null };
 const run = (command: NotebookCommand): KeyOutcome => ({
   command,
-  pendingDelete: false,
+  pending: null,
 });
 
+const DOUBLE: Record<PendingKey, NotebookCommand> = {
+  d: { type: "delete" },
+  i: { type: "interrupt" },
+  "0": { type: "restart" },
+};
+
 /**
- * The command for a key press in command mode. Chords with Cmd, Ctrl or Alt
- * are never notebook keys: they belong to the app's shortcuts (Cmd+S, …).
+ * The command for a key press in command mode. Other chords with Cmd, Ctrl
+ * or Alt are never notebook keys: they belong to the app's shortcuts.
  */
 export function commandModeKey(
   e: KeyPress,
-  pendingDelete: boolean,
+  pending: PendingKey | null,
 ): KeyOutcome {
-  if (e.metaKey || e.ctrlKey || e.altKey) return NONE;
   const key = e.key;
+  if (key === "Enter" && !e.shiftKey && (e.metaKey || e.ctrlKey) && !e.altKey)
+    return run({ type: "run", after: "stay" });
+  if (key === "Enter" && e.altKey && !e.metaKey && !e.ctrlKey)
+    return run({ type: "run", after: "insert" });
+  if (e.metaKey || e.ctrlKey || e.altKey) return NONE;
 
   if (e.shiftKey) {
-    if (key === "Enter") return run({ type: "advance" });
+    if (key === "Enter") return run({ type: "run", after: "advance" });
     if (key === "M") return run({ type: "mergeBelow" });
     if (key === "Z") return run({ type: "redo" });
     if (key === "ArrowUp" || key === "K")
@@ -57,11 +75,11 @@ export function commandModeKey(
     return NONE;
   }
 
+  if (key === "d" || key === "i" || key === "0") {
+    return pending === key ? run(DOUBLE[key]) : { command: null, pending: key };
+  }
+
   switch (key) {
-    case "d":
-      return pendingDelete
-        ? run({ type: "delete" })
-        : { command: null, pendingDelete: true };
     case "ArrowUp":
     case "k":
       return run({ type: "select", delta: -1 });

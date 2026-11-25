@@ -65,10 +65,11 @@ describe("NotebookPane", () => {
     const html = render({ kind: "ready", content: fixture });
     expect(html).toContain("Python 3 (ipykernel)");
     expect(html).toContain("6<!-- --> <!-- -->cells");
-    // Editing toolbar; running waits for a kernel.
-    expect(html).toContain("No kernel");
+    // Run controls and the kernel picker; no kernel starts until Run.
+    expect(html).toContain("Select kernel");
+    expect(html).toMatch(/<button[^>]*title="Run cell \(Shift\+Enter\)"/);
     expect(html).toMatch(
-      /<button[^>]*disabled=""[^>]*title="Running cells needs a kernel/,
+      /<button[^>]*disabled=""[^>]*title="Interrupt the kernel/,
     );
     expect(html).toContain('aria-label="Cell type"');
     expect(html).toMatch(/<h1[^>]*>Analysis — résumé 📈<\/h1>/);

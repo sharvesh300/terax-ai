@@ -1,5 +1,9 @@
 import { cn } from "@/lib/utils";
-import { DragDropVerticalIcon } from "@hugeicons/core-free-icons";
+import {
+  DragDropVerticalIcon,
+  PlayIcon,
+  StopIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   type KeyboardEvent,
@@ -17,11 +21,13 @@ import {
   useRef,
   useState,
 } from "react";
+import type { KernelApi } from "../kernel/useKernel";
 import {
   cellFileName,
   commandModeKey,
   type NotebookCommand,
   neighbourKey,
+  type PendingKey,
 } from "../lib/commands";
 import { edgeScrollSpeed, gapAtY, moveTarget } from "../lib/dragOrder";
 import type { SessionEvent } from "../lib/session";
@@ -33,12 +39,15 @@ import {
   type NotebookEdit,
   type NotebookHistory,
 } from "../model";
+import type { InputRequest } from "../lib/kernelRun";
 import type { CellEditorHandle } from "./CellEditor";
+import { InputPrompt, KernelPickerPanel } from "./KernelControls";
 import { CellActions, InsertBar, NotebookToolbar } from "./NotebookToolbar";
 import { NotebookCellView } from "./NotebookCellView";
 import { SourceBlock } from "./SourceBlock";
 
-const CellEditor = lazy(() => import("./CellEditor"));
+const loadCellEditor = () => import("./CellEditor");
+const CellEditor = lazy(loadCellEditor);
 
 type DragHandlers = {
   onPointerDown: (e: PointerEvent<HTMLElement>, key: string) => void;
@@ -60,6 +69,7 @@ type Props = {
   onSave: () => void;
   /** Header line shown under the toolbar (kernel, counts). */
   summary: ReactNode;
+  kernel: KernelApi;
   ref?: Ref<NotebookEditorHandle>;
 };
 
@@ -87,6 +97,7 @@ export function NotebookEditor({
   dirty,
   onSave,
   summary,
+  kernel,
   ref,
 }: Props) {
   const doc = history.present.doc;
@@ -98,14 +109,34 @@ export function NotebookEditor({
       : (keys[0] ?? null);
   const [editing, setEditing] = useState(false);
   const editSession = useRef(0);
-  const pendingDelete = useRef(false);
+  const pendingKey = useRef<PendingKey | null>(null);
+  const kernelRef = useRef(kernel);
+  useLayoutEffect(() => {
+    kernelRef.current = kernel;
+  });
   const containerRef = useRef<HTMLDivElement>(null);
-  const cellEditorRef = useRef<CellEditorHandle>(null);
+  const cellEditorRef = useRef<CellEditorHandle | null>(null);
+  // Keys typed between entering edit mode and the editor mounting.
+  const typedAhead = useRef("");
+  const setCellEditor = useCallback((h: CellEditorHandle | null) => {
+    cellEditorRef.current = h;
+    if (h && typedAhead.current) {
+      h.insert(typedAhead.current);
+      typedAhead.current = "";
+    }
+  }, []);
 
   const latest = useRef({ keys, selected, editing, cells: doc.cells });
   useLayoutEffect(() => {
     latest.current = { keys, selected, editing, cells: doc.cells };
   });
+
+  // Load the cell editor soon after the notebook opens, so the first click
+  // into a cell does not lose the keys typed while it would be loading.
+  useEffect(() => {
+    const t = setTimeout(() => void loadCellEditor(), 250);
+    return () => clearTimeout(t);
+  }, []);
 
   // An edit or undo names the cell it touched; follow it.
   useEffect(() => {
@@ -133,12 +164,17 @@ export function NotebookEditor({
   }, []);
 
   const startEditing = useCallback((key: string) => {
+    // The click that started editing left a browser selection in the source
+    // being replaced; its late selectionchange would move the new editor's
+    // caret to the start.
+    window.getSelection()?.removeAllRanges();
     editSession.current++;
     setSelectedKey(key);
     setEditing(true);
   }, []);
 
   const stopEditing = useCallback(() => {
+    typedAhead.current = "";
     setEditing(false);
     focusContainer();
   }, [focusContainer]);
@@ -186,14 +222,32 @@ export function NotebookEditor({
         case "redo":
           dispatch({ type: "redo" });
           return;
-        case "advance": {
+        case "run": {
+          // A markdown cell "runs" by rendering: leaving edit mode does that.
           setEditing(false);
           focusContainer();
-          // As in Jupyter, moving past the last cell adds a new one.
-          if (index === ks.length - 1) insertAt(ks.length, "code");
-          else setSelectedKey(neighbourKey(ks, sel, 1));
+          const cell = latest.current.cells.find((c) => c.key === sel);
+          if (cell?.cellType === "code")
+            void kernelRef.current.runCells([cell.key]);
+          if (cmd.after === "advance") {
+            // As in Jupyter, moving past the last cell adds a new one.
+            if (index === ks.length - 1) insertAt(ks.length, "code");
+            else setSelectedKey(neighbourKey(ks, sel, 1));
+          } else if (cmd.after === "insert") {
+            insertAt(index + 1, "code");
+          }
           return;
         }
+        case "interrupt":
+          void kernelRef.current.interrupt();
+          return;
+        case "restart":
+          if (
+            kernelRef.current.view.phase !== "none" &&
+            window.confirm("Restart the kernel? Its variables will be lost.")
+          )
+            void kernelRef.current.restart();
+          return;
       }
     },
     [apply, dispatch, focusContainer, insertAt, startEditing],
@@ -215,10 +269,21 @@ export function NotebookEditor({
   );
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (editing && !cellEditorRef.current) {
+      // The editor is still loading: keep what is typed for it.
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key.length === 1) typedAhead.current += e.key;
+      else if (e.key === "Enter") typedAhead.current += "\n";
+      else if (e.key === "Backspace")
+        typedAhead.current = typedAhead.current.slice(0, -1);
+      else return;
+      e.preventDefault();
+      return;
+    }
     if (editing || isTypingTarget(e.target)) return;
-    const outcome = commandModeKey(e, pendingDelete.current);
-    pendingDelete.current = outcome.pendingDelete;
-    if (outcome.pendingDelete) {
+    const outcome = commandModeKey(e, pendingKey.current);
+    pendingKey.current = outcome.pending;
+    if (outcome.pending) {
       e.preventDefault();
       return;
     }
@@ -254,7 +319,10 @@ export function NotebookEditor({
     if (latest.current.selected !== key) setEditing(false);
     setSelectedKey(key);
   }, []);
-  const advance = useCallback(() => run({ type: "advance" }), [run]);
+  const runSelected = useCallback(
+    (after: "advance" | "stay" | "insert") => run({ type: "run", after }),
+    [run],
+  );
   const move = useCallback(
     (delta: -1 | 1) =>
       act(
@@ -396,6 +464,17 @@ export function NotebookEditor({
   const dropAt = (gap: number) =>
     drag?.gap === gap && dragFrom !== -1 && moveTarget(dragFrom, gap) !== null;
 
+  // The gutter's run button: runs that cell, wherever the selection is.
+  const runCell = useCallback((key: string) => {
+    if (latest.current.selected !== key) setEditing(false);
+    setSelectedKey(key);
+    void kernelRef.current.runCells([key]);
+  }, []);
+  const interruptKernel = useCallback(
+    () => void kernelRef.current.interrupt(),
+    [],
+  );
+
   const selectedCell = doc.cells.find((c) => c.key === selected) ?? null;
 
   return (
@@ -430,7 +509,58 @@ export function NotebookEditor({
           apply({ type: "clearOutputs" });
           focusContainer();
         }}
+        kernel={kernel.view}
+        onRun={() => runSelected("advance")}
+        onRunAll={() => {
+          setEditing(false);
+          const codeKeys = latest.current.cells
+            .filter((c) => c.cellType === "code")
+            .map((c) => c.key);
+          void kernel.runCells(codeKeys);
+          focusContainer();
+        }}
+        onInterrupt={() => void kernel.interrupt()}
+        onRestart={() => {
+          if (window.confirm("Restart the kernel? Its variables will be lost."))
+            void kernel.restart();
+        }}
+        onPickKernel={() => kernel.openPicker()}
       />
+      {kernel.picker.open && (
+        <KernelPickerPanel
+          picker={kernel.picker}
+          current={kernel.view.spec}
+          onSelect={(s) => void kernel.selectKernel(s)}
+          onRefresh={() => void kernel.refreshSpecs()}
+          onClose={kernel.closePicker}
+        />
+      )}
+      {kernel.view.error && kernel.view.phase !== "connecting" && (
+        <div
+          role="alert"
+          className="flex shrink-0 items-start gap-3 border-b border-border/60 bg-destructive/10 px-4 py-2 text-[12px]"
+        >
+          <pre className="min-w-0 flex-1 overflow-x-auto font-mono text-[11.5px] whitespace-pre-wrap text-destructive">
+            {kernel.view.error}
+          </pre>
+          {kernel.view.spec && (
+            <button
+              type="button"
+              onClick={() => void kernel.restart()}
+              className="shrink-0 rounded border border-border/60 bg-card px-2 py-0.5 hover:bg-accent"
+            >
+              Restart kernel
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => kernel.openPicker()}
+            className="shrink-0 rounded border border-border/60 bg-card px-2 py-0.5 hover:bg-accent"
+          >
+            Select kernel
+          </button>
+        </div>
+      )}
       <div ref={scrollerRef} className="flex-1 overflow-auto">
         {/* biome-ignore lint/a11y/noStaticElementInteractions: the notebook's command-mode keyboard surface, like Jupyter's. */}
         <div
@@ -458,14 +588,23 @@ export function NotebookEditor({
                     selected={cell.key === selected}
                     editing={editing && cell.key === selected}
                     language={language}
-                    editorRef={cellEditorRef}
+                    editorRef={setCellEditor}
                     group={sourceGroup(cell.key, editSession.current)}
                     isFirst={i === 0}
                     isLast={i === doc.cells.length - 1}
                     onSelect={select}
                     onEdit={startEditing}
                     onStopEditing={stopEditing}
-                    onAdvance={advance}
+                    onRun={runSelected}
+                    onRunCell={runCell}
+                    onInterrupt={interruptKernel}
+                    runStatus={kernel.view.runs[cell.key] ?? null}
+                    input={
+                      kernel.view.input?.cellKey === cell.key
+                        ? kernel.view.input
+                        : null
+                    }
+                    onAnswer={kernel.answerInput}
                     onMove={move}
                     apply={apply}
                     act={act}
@@ -499,7 +638,12 @@ const EditableCell = memo(function EditableCell({
   onSelect,
   onEdit,
   onStopEditing,
-  onAdvance,
+  onRun,
+  onRunCell,
+  onInterrupt,
+  runStatus,
+  input,
+  onAnswer,
   onMove,
   apply,
   act,
@@ -517,7 +661,12 @@ const EditableCell = memo(function EditableCell({
   onSelect: (key: string) => void;
   onEdit: (key: string) => void;
   onStopEditing: () => void;
-  onAdvance: () => void;
+  onRun: (after: "advance" | "stay" | "insert") => void;
+  onRunCell: (key: string) => void;
+  onInterrupt: () => void;
+  runStatus: string | null;
+  input: InputRequest | null;
+  onAnswer: (value: string) => void;
   onMove: (delta: -1 | 1) => void;
   apply: (edit: NotebookEdit, group?: string | null) => void;
   act: (
@@ -528,6 +677,7 @@ const EditableCell = memo(function EditableCell({
   dragging: boolean;
 }) {
   const key = cell.key;
+  const running = runStatus === "queued" || runStatus === "running";
   const fileName = cellFileName(cell.cellType, language);
   const editSource = useCallback(() => onEdit(key), [onEdit, key]);
   const editor = editing ? (
@@ -540,7 +690,7 @@ const EditableCell = memo(function EditableCell({
         fileName={fileName}
         onChange={(source) => apply({ type: "setSource", key, source }, group)}
         onExit={onStopEditing}
-        onAdvance={onAdvance}
+        onRun={onRun}
         onSplit={(offsets) => {
           apply({ type: "split", key, offsets });
           onStopEditing();
@@ -581,6 +731,35 @@ const EditableCell = memo(function EditableCell({
       >
         <HugeiconsIcon icon={DragDropVerticalIcon} size={13} strokeWidth={2} />
       </button>
+      {cell.cellType === "code" && (
+        <button
+          type="button"
+          aria-label={running ? "Interrupt the kernel" : "Run this cell"}
+          title={running ? "Interrupt the kernel" : "Run this cell"}
+          onMouseDown={(e) => {
+            // Keep the cell editor's focus and selection as they are.
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onClick={() => (running ? onInterrupt() : onRunCell(key))}
+          className={cn(
+            "absolute top-1.5 left-[1.125rem] z-10 flex h-6 w-5 items-center justify-center rounded transition-opacity hover:bg-accent",
+            running
+              ? "text-amber-500 opacity-100"
+              : "text-muted-foreground hover:text-foreground",
+            !running &&
+              (selected
+                ? "opacity-100"
+                : "opacity-0 focus-visible:opacity-100 group-hover/cell:opacity-100"),
+          )}
+        >
+          <HugeiconsIcon
+            icon={running ? StopIcon : PlayIcon}
+            size={13}
+            strokeWidth={2}
+          />
+        </button>
+      )}
       {selected && (
         <CellActions
           canMoveUp={!isFirst}
@@ -596,7 +775,9 @@ const EditableCell = memo(function EditableCell({
         language={language}
         editor={editor}
         onSourceClick={cell.cellType === "markdown" ? undefined : editSource}
+        running={running}
       />
+      {input && <InputPrompt request={input} onSubmit={onAnswer} />}
     </div>
   );
 });

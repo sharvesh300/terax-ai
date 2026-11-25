@@ -23,6 +23,8 @@ export type CellEditorHandle = {
   undo: () => void;
   redo: () => void;
   focus: () => void;
+  /** Appends text at the end (keys typed while the editor loaded). */
+  insert: (text: string) => void;
 };
 
 type Props = {
@@ -32,8 +34,8 @@ type Props = {
   onChange: (value: string) => void;
   /** Escape: back to command mode. */
   onExit: () => void;
-  /** Shift+Enter: leave the cell and move on. */
-  onAdvance: () => void;
+  /** Shift+Enter (run, next cell), Mod+Enter (run), Alt+Enter (run, insert). */
+  onRun: (after: "advance" | "stay" | "insert") => void;
   /** Ctrl+Shift+Minus: split at the cursor (or the selection's ends). */
   onSplit: (offsets: number[]) => void;
   ref?: React.Ref<CellEditorHandle>;
@@ -67,17 +69,18 @@ export default function CellEditor({
   fileName,
   onChange,
   onExit,
-  onAdvance,
+  onRun,
   onSplit,
   ref,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const pendingInsert = useRef("");
   const languageRef = useRef(new Compartment());
   const themeRef = useRef(new Compartment());
-  const callbacks = useRef({ onChange, onExit, onAdvance, onSplit });
+  const callbacks = useRef({ onChange, onExit, onRun, onSplit });
   useLayoutEffect(() => {
-    callbacks.current = { onChange, onExit, onAdvance, onSplit };
+    callbacks.current = { onChange, onExit, onRun, onSplit };
   });
   const themeExt = useEditorThemeExt();
   const initialTheme = useRef(themeExt);
@@ -94,6 +97,19 @@ export default function CellEditor({
         if (v) redo(v);
       },
       focus: () => viewRef.current?.focus(),
+      insert: (text: string) => {
+        const v = viewRef.current;
+        // The handle exists before the view does (layout vs passive effect).
+        if (!v) {
+          pendingInsert.current += text;
+          return;
+        }
+        const end = v.state.doc.length;
+        v.dispatch({
+          changes: { from: end, insert: text },
+          selection: { anchor: end + text.length },
+        });
+      },
     }),
     [],
   );
@@ -102,10 +118,15 @@ export default function CellEditor({
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
+    // Keys typed while the editor loaded start out in it, with the caret
+    // after them (a selection set after focusing would be read back).
+    const typed = pendingInsert.current;
+    pendingInsert.current = "";
+    const initial = value + typed;
     const view = new EditorView({
       parent: host,
       state: EditorState.create({
-        doc: value,
+        doc: initial,
         extensions: [
           history(),
           drawSelection(),
@@ -124,7 +145,30 @@ export default function CellEditor({
             {
               key: "Shift-Enter",
               run: () => {
-                callbacks.current.onAdvance();
+                callbacks.current.onRun("advance");
+                return true;
+              },
+            },
+            // Jupyter takes Ctrl+Enter everywhere, and Cmd+Enter on macOS.
+            {
+              key: "Mod-Enter",
+              mac: "Cmd-Enter",
+              run: () => {
+                callbacks.current.onRun("stay");
+                return true;
+              },
+            },
+            {
+              key: "Ctrl-Enter",
+              run: () => {
+                callbacks.current.onRun("stay");
+                return true;
+              },
+            },
+            {
+              key: "Alt-Enter",
+              run: () => {
+                callbacks.current.onRun("insert");
                 return true;
               },
             },
@@ -152,19 +196,25 @@ export default function CellEditor({
               callbacks.current.onChange(u.state.doc.toString());
           }),
         ],
-        selection: { anchor: value.length },
+        selection: { anchor: initial.length },
       }),
     });
     viewRef.current = view;
     view.focus();
+    if (typed) callbacks.current.onChange(initial);
     return () => {
       view.destroy();
       viewRef.current = null;
     };
   }, []);
 
-  // An undo in the notebook history can change the text from outside.
+  // An undo in the notebook history can change the text from outside. Only
+  // a change of the prop counts: text the view holds that the notebook has
+  // not caught up with yet (typed ahead, just inserted) must not be undone.
+  const lastValue = useRef(value);
   useEffect(() => {
+    if (value === lastValue.current) return;
+    lastValue.current = value;
     const view = viewRef.current;
     if (!view) return;
     const current = view.state.doc.toString();

@@ -7,12 +7,16 @@ import {
   Delete02Icon,
   EraserIcon,
   FloppyDiskIcon,
+  NextIcon,
   PlayIcon,
+  RefreshIcon,
+  StopIcon,
   Redo02Icon,
   Undo02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { ReactNode } from "react";
+import type { KernelPhase, KernelView } from "../kernel/useKernel";
 import type { CellType } from "../model";
 
 type IconData = Parameters<typeof HugeiconsIcon>[0]["icon"];
@@ -62,6 +66,12 @@ export function NotebookToolbar({
   onAdd,
   onSetType,
   onClearOutputs,
+  kernel,
+  onRun,
+  onRunAll,
+  onInterrupt,
+  onRestart,
+  onPickKernel,
 }: {
   dirty: boolean;
   canUndo: boolean;
@@ -73,6 +83,12 @@ export function NotebookToolbar({
   onAdd: (cellType: CellType) => void;
   onSetType: (cellType: CellType) => void;
   onClearOutputs: () => void;
+  kernel: KernelView;
+  onRun: () => void;
+  onRunAll: () => void;
+  onInterrupt: () => void;
+  onRestart: () => void;
+  onPickKernel: () => void;
 }) {
   return (
     // Right padding keeps the buttons clear of the Rendered/Raw toggle.
@@ -131,15 +147,25 @@ export function NotebookToolbar({
       <Divider />
       <ToolButton
         icon={PlayIcon}
-        label="Running cells needs a kernel, which is not connected yet"
-        onClick={() => {}}
-        disabled
+        label="Run cell (Shift+Enter)"
+        onClick={onRun}
       >
         Run
       </ToolButton>
-      <span className="ml-1 rounded border border-border/60 px-1.5 py-px text-[10.5px] text-muted-foreground">
-        No kernel
-      </span>
+      <ToolButton icon={NextIcon} label="Run all cells" onClick={onRunAll} />
+      <ToolButton
+        icon={StopIcon}
+        label="Interrupt the kernel (I, I)"
+        onClick={onInterrupt}
+        disabled={!kernel.busy}
+      />
+      <ToolButton
+        icon={RefreshIcon}
+        label="Restart the kernel (0, 0)"
+        onClick={onRestart}
+        disabled={kernel.phase === "none" || kernel.phase === "connecting"}
+      />
+      <KernelButton kernel={kernel} onClick={onPickKernel} />
       {dirty && (
         <span className="ml-2 inline-flex items-center">
           <span
@@ -247,6 +273,57 @@ function InsertButton({
     >
       <HugeiconsIcon icon={Add01Icon} size={11} strokeWidth={2} />
       {children}
+    </button>
+  );
+}
+
+const PHASE_LABEL: Record<KernelPhase, string> = {
+  none: "No kernel",
+  connecting: "Starting…",
+  starting: "Starting…",
+  idle: "Idle",
+  busy: "Busy",
+  restarting: "Restarting…",
+  dead: "Stopped",
+};
+
+/** The kernel in use and its state; opens the kernel picker. */
+function KernelButton({
+  kernel,
+  onClick,
+}: {
+  kernel: KernelView;
+  onClick: () => void;
+}) {
+  const { phase, spec } = kernel;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseDown={(e) => e.preventDefault()}
+      title={
+        spec ? `${spec.displayName} — ${PHASE_LABEL[phase]}` : "Select a kernel"
+      }
+      className="ml-1 inline-flex h-6 max-w-56 items-center gap-1.5 rounded border border-border/60 px-1.5 text-[10.5px] text-muted-foreground hover:bg-accent hover:text-foreground"
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "size-1.5 shrink-0 rounded-full",
+          phase === "idle" && "bg-emerald-500",
+          phase === "busy" && "bg-amber-500",
+          (phase === "connecting" ||
+            phase === "starting" ||
+            phase === "restarting") &&
+            "bg-sky-500",
+          phase === "dead" && "bg-destructive",
+          phase === "none" && "bg-muted-foreground/50",
+        )}
+      />
+      <span className="truncate">
+        {spec && phase !== "none" ? spec.displayName : "Select kernel"}
+      </span>
+      <span className="sr-only">{PHASE_LABEL[phase]}</span>
     </button>
   );
 }

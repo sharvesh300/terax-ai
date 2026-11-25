@@ -14,6 +14,7 @@ export const NotebookCellView = memo(function NotebookCellView({
   language,
   editor = null,
   onSourceClick,
+  running = false,
 }: {
   cell: NotebookCell;
   /** The notebook's code language, for highlighting code cells. */
@@ -22,6 +23,8 @@ export const NotebookCellView = memo(function NotebookCellView({
   editor?: ReactNode;
   /** Clicking a code or raw cell's source starts editing it. */
   onSourceClick?: () => void;
+  /** Queued or running in the kernel: the prompt shows [*]. */
+  running?: boolean;
 }) {
   if (cell.cellType === "markdown") {
     return (
@@ -56,6 +59,7 @@ export const NotebookCellView = memo(function NotebookCellView({
       language={language}
       editor={editor}
       onSourceClick={onSourceClick}
+      running={running}
     />
   );
 });
@@ -82,11 +86,13 @@ function CodeCell({
   language,
   editor,
   onSourceClick,
+  running,
 }: {
   cell: NotebookCell;
   language: string | null;
   editor: ReactNode;
   onSourceClick?: () => void;
+  running: boolean;
 }) {
   const view = useMemo(() => cellView(cell.metadata), [cell.metadata]);
   const outputs = useMemo(() => mergeStreams(cell.outputs), [cell.outputs]);
@@ -98,7 +104,15 @@ function CodeCell({
 
   return (
     <div className="terax-notebook-cell flex flex-col gap-1.5">
-      <Row gutter={prompt(cell.executionCount)}>
+      <Row
+        gutter={
+          running ? (
+            <span className="text-foreground">[*]:</span>
+          ) : (
+            prompt(cell.executionCount)
+          )
+        }
+      >
         {editor ??
           (sourceHidden ? (
             <Reveal onClick={() => setShowSource(true)}>

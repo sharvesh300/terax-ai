@@ -14,8 +14,11 @@ const press = (key: string, mods: Partial<KeyPress> = {}): KeyPress => ({
   altKey: false,
   ...mods,
 });
-const cmd = (key: string, mods?: Partial<KeyPress>, pending = false) =>
-  commandModeKey(press(key, mods), pending).command;
+const cmd = (
+  key: string,
+  mods?: Partial<KeyPress>,
+  pending: "d" | "i" | "0" | null = null,
+) => commandModeKey(press(key, mods), pending).command;
 
 describe("commandModeKey", () => {
   it("maps Jupyter's command-mode keys", () => {
@@ -30,17 +33,38 @@ describe("commandModeKey", () => {
     expect(cmd("z")).toEqual({ type: "undo" });
     expect(cmd("Z", { shiftKey: true })).toEqual({ type: "redo" });
     expect(cmd("M", { shiftKey: true })).toEqual({ type: "mergeBelow" });
-    expect(cmd("Enter", { shiftKey: true })).toEqual({ type: "advance" });
+    expect(cmd("Enter", { shiftKey: true })).toEqual({
+      type: "run",
+      after: "advance",
+    });
+    expect(cmd("Enter", { ctrlKey: true })).toEqual({
+      type: "run",
+      after: "stay",
+    });
+    expect(cmd("Enter", { metaKey: true })).toEqual({
+      type: "run",
+      after: "stay",
+    });
+    expect(cmd("Enter", { altKey: true })).toEqual({
+      type: "run",
+      after: "insert",
+    });
   });
 
-  it("deletes on D D only", () => {
-    expect(commandModeKey(press("d"), false)).toEqual({
+  it("deletes on D D, interrupts on I I and restarts on 0 0", () => {
+    expect(commandModeKey(press("d"), null)).toEqual({
       command: null,
-      pendingDelete: true,
+      pending: "d",
     });
-    expect(cmd("d", {}, true)).toEqual({ type: "delete" });
-    // Any other key in between cancels it.
-    expect(commandModeKey(press("j"), true).pendingDelete).toBe(false);
+    expect(cmd("d", {}, "d")).toEqual({ type: "delete" });
+    expect(cmd("i", {}, "i")).toEqual({ type: "interrupt" });
+    expect(cmd("0", {}, "0")).toEqual({ type: "restart" });
+    // A different second key starts over; any other key cancels.
+    expect(commandModeKey(press("i"), "d")).toEqual({
+      command: null,
+      pending: "i",
+    });
+    expect(commandModeKey(press("j"), "d").pending).toBeNull();
   });
 
   it("leaves chords with Cmd, Ctrl or Alt to the app", () => {

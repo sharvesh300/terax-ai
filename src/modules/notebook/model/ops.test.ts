@@ -13,6 +13,7 @@ import {
 import {
   applyEdit,
   applyExecution,
+  compactStreamText,
   createNotebook,
   type EditContext,
 } from "./ops";
@@ -311,6 +312,33 @@ describe("applyExecution", () => {
     ).toBe(d);
   });
 
+  it("keeps one line of a carriage-return progress bar", () => {
+    expect(compactStreamText("10%\r50%\r100%\ndone")).toBe("100%\ndone");
+    expect(compactStreamText("a\r\nb")).toBe("a\nb");
+    // A trailing return waits for the text that overwrites it.
+    expect(compactStreamText("50%\r")).toBe("50%\r");
+    const { doc } = threeCells();
+    let d = applyExecution(doc, { type: "setOutputs", key: "k1", outputs: [] });
+    for (let i = 0; i <= 100; i++) {
+      d = applyExecution(d, {
+        type: "appendOutput",
+        key: "k1",
+        output: stream(`\r${i}%`),
+      });
+    }
+    expect(d.cells[0].outputs).toMatchObject([{ text: "100%" }]);
+  });
+
+  it("writes kernel metadata, and nothing when it is unchanged", () => {
+    const { doc } = threeCells();
+    const patch = {
+      kernelspec: { name: "python3", display_name: "Py", language: "python" },
+    };
+    const d = applyExecution(doc, { type: "setNotebookMetadata", patch });
+    expect(d.metadata.kernelspec).toEqual(patch.kernelspec);
+    expect(applyExecution(d, { type: "setNotebookMetadata", patch })).toBe(d);
+  });
+
   it("ignores events for missing or non-code cells", () => {
     const { doc, ctx } = threeCells();
     const md = applyEdit(
@@ -394,6 +422,21 @@ describe("history", () => {
         applyEdit(doc, { type: "move", key: "k1", toIndex: 0 }, ctx),
       ),
     ).toBe(h);
+  });
+
+  it("applies a batch of output in one pass", () => {
+    const { doc } = threeCells();
+    const h = applyExecutionToHistory(createHistory(doc), [
+      { type: "setOutputs", key: "k1", outputs: [] },
+      { type: "appendOutput", key: "k1", output: stream("a") },
+      { type: "appendOutput", key: "k1", output: stream("b") },
+      { type: "setExecutionCount", key: "k1", count: 7 },
+    ]);
+    expect(h.present.doc.cells[0]).toMatchObject({
+      executionCount: 7,
+      outputs: [{ text: "ab" }],
+    });
+    expect(applyExecutionToHistory(h, [])).toBe(h);
   });
 
   it("keeps kernel output when an earlier edit is undone", () => {

@@ -287,7 +287,18 @@ export type ExecutionEvent =
       readonly type: "setExecutionCount";
       readonly key: string;
       readonly count: number | null;
-    };
+    }
+  /** Top-level metadata the kernel describes (kernelspec, language_info). */
+  | { readonly type: "setNotebookMetadata"; readonly patch: JsonObject };
+
+/**
+ * Drops text a carriage return overwrote, as JupyterLab does when output
+ * arrives, so a progress bar keeps one line instead of every frame.
+ */
+export function compactStreamText(text: string): string {
+  if (!text.includes("\r")) return text;
+  return text.replace(/\r+\n/g, "\n").replace(/^[^\n]*\r(?=[^\r\n])/gm, "");
+}
 
 function updateCell(
   doc: NotebookDocument,
@@ -323,12 +334,19 @@ export function applyExecution(
           o.outputType === "stream" &&
           last.name === o.name
         ) {
-          const joined = { ...last, text: last.text + o.text };
+          const joined = {
+            ...last,
+            text: compactStreamText(last.text + o.text),
+          };
           return deriveCell(c, {
             outputs: [...c.outputs.slice(0, -1), joined],
           });
         }
-        return deriveCell(c, { outputs: [...c.outputs, o] });
+        const added =
+          o.outputType === "stream"
+            ? { ...o, text: compactStreamText(o.text) }
+            : o;
+        return deriveCell(c, { outputs: [...c.outputs, added] });
       });
 
     case "updateDisplay": {
@@ -360,6 +378,16 @@ export function applyExecution(
           ? c
           : deriveCell(c, { executionCount: ev.count }),
       );
+
+    case "setNotebookMetadata": {
+      const keys = Object.keys(ev.patch);
+      const same = keys.every(
+        (k) => JSON.stringify(doc.metadata[k]) === JSON.stringify(ev.patch[k]),
+      );
+      return same
+        ? doc
+        : deriveDoc(doc, { metadata: { ...doc.metadata, ...ev.patch } });
+    }
   }
 }
 
