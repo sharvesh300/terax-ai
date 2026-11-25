@@ -1,3 +1,4 @@
+import { isHighlightable } from "@/components/ai-elements/chat-code-lezer";
 import { describe, expect, it } from "vitest";
 import {
   applyCarriageReturns,
@@ -5,6 +6,7 @@ import {
   errorText,
   imageSrc,
   kernelLabel,
+  notebookLanguage,
   pickDisplayMime,
   renderKeys,
   stripAnsi,
@@ -122,5 +124,35 @@ describe("renderKeys", () => {
     expect(
       renderKeys([{ id: "a" }, { id: null }, { id: "a" }, { id: "b" }]),
     ).toEqual(["id:a", "at:1", "at:2", "id:b"]);
+  });
+});
+
+describe("notebookLanguage", () => {
+  it("maps kernel languages to highlighter names", () => {
+    expect(notebookLanguage({ language_info: { name: "python" } })).toBe(
+      "python",
+    );
+    expect(notebookLanguage({ kernelspec: { language: "ipython3" } })).toBe(
+      "python",
+    );
+    expect(notebookLanguage({ language_info: { name: "C++17" } })).toBe("cpp");
+    expect(notebookLanguage({ language_info: { name: "R" } })).toBe("r");
+    expect(notebookLanguage({})).toBeNull();
+  });
+
+  it("names languages the code highlighter knows", () => {
+    for (const name of [
+      "python",
+      "R",
+      "typescript",
+      "javascript",
+      "rust",
+      "go",
+      "scala",
+      "C++17",
+    ]) {
+      const lang = notebookLanguage({ language_info: { name } });
+      expect(isHighlightable(lang)).toBe(true);
+    }
   });
 });

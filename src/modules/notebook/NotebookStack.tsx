@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import type { NotebookTab, Tab } from "@/modules/tabs";
+import { workspaceRootOf } from "@/modules/markdown/lib/workspaceRoot";
 import { NotebookPane } from "./NotebookPane";
 
 type Props = {
@@ -13,6 +14,7 @@ export function NotebookStack({ tabs, activeId, onSetDocumentView }: Props) {
     (t): t is NotebookTab => t.kind === "notebook" && !t.cold,
   );
   if (notebooks.length === 0) return null;
+  const workspaceRoot = workspaceRootOf(tabs, activeId);
   return (
     <div className="relative h-full w-full">
       {notebooks.map((t) => {
@@ -28,6 +30,7 @@ export function NotebookStack({ tabs, activeId, onSetDocumentView }: Props) {
           >
             <NotebookPane
               path={t.path}
+              workspaceRoot={workspaceRoot}
               visible={visible}
               onSetView={(mode) => onSetDocumentView(t.id, mode)}
             />

@@ -1,24 +1,20 @@
-import { MarkdownCode } from "@/components/ai-elements/markdown-code";
 import { cn } from "@/lib/utils";
-import { MarkdownLink } from "@/modules/markdown/MarkdownLink";
 import { memo, type ReactNode } from "react";
-import { defaultRehypePlugins, Streamdown } from "streamdown";
 import type { NotebookCell } from "../model";
+import { MarkdownCell } from "./MarkdownCell";
 import { NotebookOutputView } from "./NotebookOutputView";
-
-const components = { a: MarkdownLink, code: MarkdownCode };
-const d = defaultRehypePlugins;
-// Same sanitizing pipeline as the markdown preview. Local images and
-// attachments arrive with the cell renderers.
-const rehypePlugins = [d.raw, d.sanitize, d.harden];
+import { SourceBlock } from "./SourceBlock";
 
 const prompt = (n: number | null) => `[${n ?? " "}]:`;
 
 /** One cell, read-only. Memoized: a reload re-renders only changed cells. */
 export const NotebookCellView = memo(function NotebookCellView({
   cell,
+  language,
 }: {
   cell: NotebookCell;
+  /** The notebook's code language, for highlighting code cells. */
+  language: string | null;
 }) {
   if (cell.cellType === "markdown") {
     return (
@@ -28,15 +24,7 @@ export const NotebookCellView = memo(function NotebookCellView({
             Empty markdown cell
           </p>
         ) : (
-          <Streamdown
-            className="select-text text-[13.5px] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
-            components={components}
-            rehypePlugins={rehypePlugins}
-            mode="static"
-            parseIncompleteMarkdown={false}
-          >
-            {cell.source}
-          </Streamdown>
+          <MarkdownCell source={cell.source} attachments={cell.attachments} />
         )}
       </Row>
     );
@@ -53,7 +41,7 @@ export const NotebookCellView = memo(function NotebookCellView({
   return (
     <div className="terax-notebook-cell flex flex-col gap-1.5">
       <Row gutter={prompt(cell.executionCount)}>
-        <SourceBlock source={cell.source} />
+        <SourceBlock source={cell.source} language={language} />
       </Row>
       {cell.outputs.map((output, i) => (
         <Row
@@ -98,19 +86,5 @@ function Row({
       </div>
       <div className="min-w-0">{children}</div>
     </div>
-  );
-}
-
-function SourceBlock({ source, muted }: { source: string; muted?: boolean }) {
-  return (
-    <pre
-      className={cn(
-        "select-text overflow-x-auto rounded-md border border-border/60 bg-card px-3 py-2 font-mono text-[12.5px] leading-[1.55]",
-        muted && "text-muted-foreground",
-        source === "" && "text-muted-foreground/60",
-      )}
-    >
-      {source === "" ? " " : source}
-    </pre>
   );
 }

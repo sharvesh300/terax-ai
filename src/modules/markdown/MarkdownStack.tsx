@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import type { MarkdownTab, Tab } from "@/modules/tabs";
+import { workspaceRootOf } from "./lib/workspaceRoot";
 import { MarkdownPreviewPane } from "./MarkdownPreviewPane";
 
 type Props = {
@@ -7,14 +8,6 @@ type Props = {
   activeId: number;
   onSetDocumentView: (id: number, mode: "rendered" | "raw") => void;
 };
-
-/** The folder the explorer shows: the active terminal's cwd, else any terminal's. */
-function workspaceRootOf(tabs: Tab[], activeId: number): string | null {
-  const active = tabs.find((t) => t.id === activeId);
-  if (active?.kind === "terminal" && active.cwd) return active.cwd;
-  for (const t of tabs) if (t.kind === "terminal" && t.cwd) return t.cwd;
-  return null;
-}
 
 export function MarkdownStack({ tabs, activeId, onSetDocumentView }: Props) {
   const markdowns = tabs.filter(

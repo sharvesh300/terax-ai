@@ -1,5 +1,8 @@
+import { useAssetGrant } from "@/lib/useAssetGrant";
 import { cn } from "@/lib/utils";
+import { checkReadable } from "@/modules/ai/lib/security";
 import { MarkdownViewToggle } from "@/modules/markdown";
+import { previewBoundary } from "@/modules/markdown/lib/assetPath";
 import { useMarkdownDocument } from "@/modules/markdown/useMarkdownDocument";
 import {
   type ReactNode,
@@ -9,12 +12,19 @@ import {
   useRef,
   useState,
 } from "react";
+import {
+  type LocalImages,
+  LocalImagesContext,
+} from "./components/MarkdownCell";
 import { NotebookCellView } from "./components/NotebookCellView";
-import { kernelLabel, renderKeys } from "./lib/display";
+import { mayHaveImages } from "./lib/attachments";
+import { kernelLabel, notebookLanguage, renderKeys } from "./lib/display";
 import { type NotebookDocument, parseNotebook } from "./model";
 
 type Props = {
   path: string;
+  /** Local images load only from beneath this folder (or the notebook's own). */
+  workspaceRoot?: string | null;
   visible: boolean;
   onSetView: (mode: "rendered" | "raw") => void;
 };
@@ -27,7 +37,12 @@ function formatBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function NotebookPane({ path, visible, onSetView }: Props) {
+export function NotebookPane({
+  path,
+  workspaceRoot = null,
+  visible,
+  onSetView,
+}: Props) {
   // "Open anyway" is a per-file decision; a renamed or new path starts unforced.
   const [forcedPath, setForcedPath] = useState<string | null>(null);
   const status = useMarkdownDocument(path, visible, forcedPath === path);
@@ -97,16 +112,51 @@ export function NotebookPane({ path, visible, onSetView }: Props) {
               onOpenRaw={openRaw}
             />
           )}
-          {parsed?.ok && <NotebookBody doc={parsed.doc} />}
+          {parsed?.ok && (
+            <NotebookBody
+              doc={parsed.doc}
+              path={path}
+              boundary={previewBoundary(path, workspaceRoot)}
+            />
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-function NotebookBody({ doc }: { doc: NotebookDocument }) {
+const isReadable = (abs: string) => checkReadable(abs).ok;
+
+function NotebookBody({
+  doc,
+  path,
+  boundary,
+}: {
+  doc: NotebookDocument;
+  path: string;
+  boundary: string;
+}) {
   const keys = useMemo(() => renderKeys(doc.cells), [doc.cells]);
   const kernel = kernelLabel(doc.metadata);
+  const language = notebookLanguage(doc.metadata);
+  // The asset grant is a backend call; only notebooks that may show local
+  // images ask for one.
+  const wantsImages = useMemo(
+    () =>
+      doc.cells.some(
+        (c) => c.cellType === "markdown" && mayHaveImages(c.source),
+      ),
+    [doc.cells],
+  );
+  const {
+    urlFor,
+    error: imagesError,
+    retry,
+  } = useAssetGrant(wantsImages ? boundary : null);
+  const images = useMemo<LocalImages | null>(
+    () => (wantsImages ? { path, boundary, urlFor, isReadable } : null),
+    [wantsImages, path, boundary, urlFor],
+  );
   const count = doc.cells.length;
   return (
     <>
@@ -127,14 +177,24 @@ function NotebookBody({ doc }: { doc: NotebookDocument }) {
           Read-only
         </span>
       </header>
+      {wantsImages && imagesError && (
+        <div className="mb-3 flex gap-2 text-[11px] text-muted-foreground">
+          <p role="alert">Local images unavailable: {imagesError}</p>
+          <button type="button" className="underline" onClick={retry}>
+            Retry
+          </button>
+        </div>
+      )}
       {count === 0 ? (
         <Note>This notebook has no cells.</Note>
       ) : (
-        <div className="flex flex-col gap-3">
-          {doc.cells.map((cell, i) => (
-            <NotebookCellView key={keys[i]} cell={cell} />
-          ))}
-        </div>
+        <LocalImagesContext.Provider value={images}>
+          <div className="flex flex-col gap-3">
+            {doc.cells.map((cell, i) => (
+              <NotebookCellView key={keys[i]} cell={cell} language={language} />
+            ))}
+          </div>
+        </LocalImagesContext.Provider>
       )}
     </>
   );

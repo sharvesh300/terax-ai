@@ -141,3 +141,31 @@ export function renderKeys(
     return key;
   });
 }
+
+// Kernel language names that differ from the highlighter's names.
+const LANGUAGE_ALIASES: Readonly<Record<string, string>> = {
+  ipython: "python",
+  ipython3: "python",
+  python3: "python",
+  "c++": "cpp",
+  "c++11": "cpp",
+  "c++14": "cpp",
+  "c++17": "cpp",
+  "c++20": "cpp",
+  "c#": "csharp",
+  "f#": "fsharp",
+  ts: "typescript",
+  js: "javascript",
+};
+
+/** The language of a notebook's code cells, from its metadata. */
+export function notebookLanguage(metadata: JsonObject): string | null {
+  const info = metadata.language_info;
+  const spec = metadata.kernelspec;
+  const raw =
+    (isJsonObject(info) ? str(info.name) : null) ??
+    (isJsonObject(spec) ? str(spec.language) : null);
+  if (raw === null) return null;
+  const lower = raw.toLowerCase();
+  return LANGUAGE_ALIASES[lower] ?? lower;
+}

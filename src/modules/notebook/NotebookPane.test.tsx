@@ -54,6 +54,13 @@ describe("NotebookPane", () => {
     expect(html).toContain("An output type this version does not know");
   });
 
+  it("shows a markdown cell's attachment image", () => {
+    const html = render({ kind: "ready", content: fixture });
+    expect(html).toMatch(
+      /<img[^>]*alt="img"[^>]*src="data:image\/png;base64,iVBOR/,
+    );
+  });
+
   it("explains a file it cannot parse and offers the raw view", () => {
     const html = render({
       kind: "ready",

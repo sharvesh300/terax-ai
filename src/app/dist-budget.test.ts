@@ -260,6 +260,36 @@ describe("built startup graph", () => {
     expect(findDuplicatePackagesInDist(outDir)).toEqual([]);
   });
 
+  it("keeps KaTeX in the notebook's lazy math chunk only", () => {
+    // Notebook math is the only KaTeX user. In a shared chunk (the
+    // `@streamdown/*` rule once put it in `streamdown`) every chat and
+    // markdown preview would download about 80 kB gzip for nothing.
+    const assets = join(outDir, "assets");
+    const files = readdirSync(assets);
+    const withKatex = files
+      .filter((f) => f.endsWith(".js.map"))
+      .filter((f) => {
+        const pkgs = packagesFromMap(readFileSync(join(assets, f), "utf8"));
+        return pkgs?.has("katex") || pkgs?.has("@streamdown/math");
+      })
+      .map((f) => chunkName(`assets/${f.replace(/\.map$/, "")}`));
+    expect(withKatex).toEqual(["mathRuntime"]);
+    const math = files.find(
+      (f) => f.endsWith(".js") && chunkName(`assets/${f}`) === "mathRuntime",
+    ) as string;
+    const staticImporters = files
+      .filter((f) => f.endsWith(".js") && f !== math)
+      .filter((f) =>
+        staticImports(readFileSync(join(assets, f), "utf8")).some((spec) =>
+          spec.endsWith(`/${math}`),
+        ),
+      );
+    expect(staticImporters).toEqual([]);
+    // Only the woff2 fonts ship; WebKit never loads the woff/ttf fallbacks.
+    expect(files.filter((f) => /^KaTeX_.*\.(?:woff|ttf)$/.test(f))).toEqual([]);
+    expect(files.some((f) => /^KaTeX_.*\.woff2$/.test(f))).toBe(true);
+  });
+
   it("bundles one shared Lezer highlighter for parsers and themes", () => {
     const assets = join(outDir, "assets");
     const sources = new Set<string>();

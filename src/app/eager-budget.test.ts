@@ -11,6 +11,7 @@ const HEAVY = [
   "@ai-sdk",
   "ai",
   "streamdown",
+  "katex",
   "@codemirror",
   "@uiw",
   "motion",
