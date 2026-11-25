@@ -1,4 +1,9 @@
-import type { CloseTabsPlan, Tab } from "@/modules/tabs";
+import {
+  type CloseTabsPlan,
+  isDirtyTab,
+  isFileTab,
+  type Tab,
+} from "@/modules/tabs";
 
 function normalizePath(path: string): string {
   return path.replace(/\\/g, "/");
@@ -25,11 +30,7 @@ export function renamedPath(
 }
 
 export function hasOpenPathTab(tabs: readonly Tab[], path: string): boolean {
-  return tabs.some(
-    (tab) =>
-      (tab.kind === "editor" || tab.kind === "markdown") &&
-      pathAtOrUnder(tab.path, path),
-  );
+  return tabs.some((tab) => isFileTab(tab) && pathAtOrUnder(tab.path, path));
 }
 
 export type CloseManyKind = "right" | "other";
@@ -71,9 +72,9 @@ export function deletedPathTabs(
   const dirtyIds: number[] = [];
   const cleanIds: number[] = [];
   for (const tab of tabs) {
-    if (tab.kind !== "editor" && tab.kind !== "markdown") continue;
+    if (!isFileTab(tab)) continue;
     if (!paths.some((path) => pathAtOrUnder(tab.path, path))) continue;
-    (tab.kind === "editor" && tab.dirty ? dirtyIds : cleanIds).push(tab.id);
+    (isDirtyTab(tab) ? dirtyIds : cleanIds).push(tab.id);
   }
   return { dirtyIds, cleanIds };
 }

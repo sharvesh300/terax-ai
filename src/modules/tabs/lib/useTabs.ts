@@ -1,4 +1,4 @@
-import { isMarkdownPath } from "@/lib/utils";
+import { isMarkdownPath, isNotebookPath } from "@/lib/utils";
 import {
   type AgentInstanceCount,
   createAgentPanePlan,
@@ -72,12 +72,42 @@ export type PreviewTab = TabBase & {
   url: string;
 };
 
-export type MarkdownTab = TabBase & {
+type RenderedTabBase = TabBase & {
   id: number;
-  kind: "markdown";
   title: string;
   path: string;
+  /** Language picked in the raw editor, kept for when it is shown again. */
+  overrideLanguage?: string | null;
 };
+
+export type MarkdownTab = RenderedTabBase & { kind: "markdown" };
+
+export type NotebookTab = RenderedTabBase & {
+  kind: "notebook";
+  /** Unsaved edits in the notebook view. */
+  dirty: boolean;
+};
+
+/** Files that open in a rendered view and flip to the raw editor on demand. */
+export type RenderedTab = MarkdownTab | NotebookTab;
+
+export function renderedKindFor(path: string): RenderedTab["kind"] | null {
+  if (isMarkdownPath(path)) return "markdown";
+  if (isNotebookPath(path)) return "notebook";
+  return null;
+}
+
+/** Tabs holding edits not yet written to disk. */
+export function isDirtyTab(tab: Tab): boolean {
+  return (tab.kind === "editor" || tab.kind === "notebook") && tab.dirty;
+}
+
+/** Tabs that show a file from disk at `path`. */
+export function isFileTab(tab: Tab): tab is EditorTab | RenderedTab {
+  return (
+    tab.kind === "editor" || tab.kind === "markdown" || tab.kind === "notebook"
+  );
+}
 
 export type AiDiffStatus = "pending" | "approved" | "rejected";
 
@@ -130,6 +160,7 @@ export type Tab =
   | EditorTab
   | PreviewTab
   | MarkdownTab
+  | NotebookTab
   | AiDiffTab
   | GitDiffTab
   | GitHistoryTab
@@ -171,35 +202,76 @@ type CloseTabsPlanResult = {
   nextActiveId: number;
 };
 
-export function planMarkdownTabOpen(
+/**
+ * Opens a markdown or notebook file in its rendered view, reusing a tab of
+ * the same kind for the same path in the space. Returns `tabs` unchanged for
+ * a path with no rendered view.
+ */
+export function planRenderedTabOpen(
   tabs: Tab[],
   path: string,
   spaceId: string,
   allocId: () => number,
-): { tabs: Tab[]; tabId: number } {
+): { tabs: Tab[]; tabId: number | null } {
+  const kind = renderedKindFor(path);
+  if (kind === null) return { tabs, tabId: null };
   const pathKey = path.replace(/\\/g, "/");
   const existing = tabs.find(
     (tab) =>
-      tab.kind === "markdown" &&
+      tab.kind === kind &&
       tab.spaceId === spaceId &&
       tab.path.replace(/\\/g, "/") === pathKey,
   );
   if (existing) return { tabs, tabId: existing.id };
 
   const tabId = allocId();
-  return {
-    tabs: [
-      ...tabs,
-      {
-        id: tabId,
-        kind: "markdown",
-        spaceId,
-        title: basename(path),
-        path,
-      },
-    ],
-    tabId,
-  };
+  const title = basename(path);
+  const tab: RenderedTab =
+    kind === "notebook"
+      ? { id: tabId, kind, spaceId, title, path, dirty: false }
+      : { id: tabId, kind, spaceId, title, path };
+  return { tabs: [...tabs, tab], tabId };
+}
+
+/**
+ * Flips a markdown or notebook tab between its rendered view and the raw
+ * editor. A dirty editor stays raw so unsaved text is never dropped; other
+ * tabs are returned unchanged.
+ */
+export function planDocumentView(t: Tab, mode: "rendered" | "raw"): Tab {
+  if (!isFileTab(t)) return t;
+  const kind = renderedKindFor(t.path);
+  if (kind === null) return t;
+  // Unsaved notebook edits live in the notebook view, not in the file.
+  if (mode === "raw" && t.kind === "notebook" && t.dirty) return t;
+  if (mode === "raw" && t.kind !== "editor") {
+    return {
+      id: t.id,
+      kind: "editor",
+      spaceId: t.spaceId,
+      cold: t.cold,
+      title: t.title,
+      path: t.path,
+      dirty: false,
+      preview: false,
+      overrideLanguage: t.overrideLanguage ?? null,
+    };
+  }
+  if (mode === "rendered" && t.kind === "editor") {
+    if (t.dirty) return t;
+    const base = {
+      id: t.id,
+      spaceId: t.spaceId,
+      cold: t.cold,
+      title: t.title,
+      path: t.path,
+      overrideLanguage: t.overrideLanguage ?? null,
+    };
+    return kind === "notebook"
+      ? { ...base, kind, dirty: false }
+      : { ...base, kind };
+  }
+  return t;
 }
 
 export function planFileTabOpen(
@@ -1012,15 +1084,16 @@ export function useTabs(initial?: Partial<TerminalTab>) {
   // batch that opens a markdown file before a regular one (multi-file "Open
   // With") would otherwise have the queued markdown update clobbered by
   // openFileTab's setTabs(plan.tabs), which is built from the stale ref.
-  const newMarkdownTab = useCallback(
+  const newRenderedTab = useCallback(
     (path: string) => {
       const curr = tabsRef.current;
-      const plan = planMarkdownTabOpen(
+      const plan = planRenderedTabOpen(
         curr,
         path,
         activeSpaceIdRef.current,
         () => nextIdRef.current++,
       );
+      if (plan.tabId === null) return null;
       if (plan.tabs !== curr) {
         tabsRef.current = plan.tabs;
         setTabs(plan.tabs);
@@ -1046,40 +1119,10 @@ export function useTabs(initial?: Partial<TerminalTab>) {
     [setTabs],
   );
 
-  const setMarkdownView = useCallback(
+  const setDocumentView = useCallback(
     (id: number, mode: "rendered" | "raw") => {
       setTabs((curr) =>
-        curr.map((t) => {
-          if (
-            t.id !== id ||
-            !isMarkdownPath((t as { path?: string }).path ?? "")
-          )
-            return t;
-          if (mode === "raw" && t.kind === "markdown") {
-            return {
-              ...t,
-              kind: "editor" as const,
-              dirty: false,
-              preview: false,
-              overrideLanguage:
-                (t as { overrideLanguage?: string | null }).overrideLanguage ??
-                null,
-            };
-          }
-          if (mode === "rendered" && t.kind === "editor") {
-            if (t.dirty) return t;
-            return {
-              id: t.id,
-              kind: "markdown" as const,
-              spaceId: t.spaceId,
-              cold: t.cold,
-              title: t.title,
-              path: t.path,
-              overrideLanguage: t.overrideLanguage ?? null,
-            };
-          }
-          return t;
-        }),
+        curr.map((t) => (t.id === id ? planDocumentView(t, mode) : t)),
       );
     },
     [setTabs],
@@ -1244,6 +1287,14 @@ export function useTabs(initial?: Partial<TerminalTab>) {
               ...x,
               ...(patch.title !== undefined && { title: patch.title }),
               ...(patch.path !== undefined && { path: patch.path }),
+            };
+          }
+          if (x.kind === "notebook") {
+            return {
+              ...x,
+              ...(patch.title !== undefined && { title: patch.title }),
+              ...(patch.path !== undefined && { path: patch.path }),
+              ...(patch.dirty !== undefined && { dirty: patch.dirty }),
             };
           }
           // editor tab: auto-promote from preview the moment the file becomes dirty.
@@ -1508,8 +1559,8 @@ export function useTabs(initial?: Partial<TerminalTab>) {
     openFileTab,
     pinTab,
     newPreviewTab,
-    newMarkdownTab,
-    setMarkdownView,
+    newRenderedTab,
+    setDocumentView,
     openAiDiffTab,
     openGitDiffTab,
     openCommitHistoryTab,

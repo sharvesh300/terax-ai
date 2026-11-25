@@ -53,7 +53,13 @@ import {
 import { useShallow } from "zustand/react/shallow";
 import { selectTabAgentStatus } from "./lib/tabAgentStatus";
 import { labelFor } from "./lib/tabLabel";
-import type { EditorTab, Tab, TerminalTab } from "./lib/useTabs";
+import {
+  type EditorTab,
+  isDirtyTab,
+  isFileTab,
+  type Tab,
+  type TerminalTab,
+} from "./lib/useTabs";
 import { NewTabMenu } from "./NewTabMenu";
 
 type Props = {
@@ -469,7 +475,7 @@ export function TabBar({
                     <span className={cn("truncate", isPreview && "italic")}>
                       {labelFor(t)}
                     </span>
-                    {t.kind === "editor" && t.dirty ? (
+                    {isDirtyTab(t) ? (
                       <span
                         aria-label="Unsaved changes"
                         className="size-1.5 shrink-0 rounded-full bg-foreground/70"
@@ -667,7 +673,7 @@ function TerminalTabIcon({ tab }: { tab: TerminalTab }) {
 }
 
 export function TabIcon({ tab }: { tab: Tab }) {
-  if (tab.kind === "editor" || tab.kind === "markdown") {
+  if (isFileTab(tab)) {
     return (
       <FileIcon
         name={

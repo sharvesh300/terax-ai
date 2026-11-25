@@ -13,7 +13,7 @@ import {
   useState,
 } from "react";
 import { usePreferencesStore } from "@/modules/settings/preferences";
-import type { Tab } from "@/modules/tabs";
+import { isDirtyTab, type Tab } from "@/modules/tabs";
 import { leafHasForegroundProcess, leafIds } from "@/modules/terminal";
 
 async function anyTerminalBusy(tabs: Tab[]): Promise<boolean> {
@@ -112,9 +112,7 @@ export function useAppCloseGuard(tabsRef: RefObject<Tab[]>) {
           usePreferencesStore.getState().confirmCloseRunningTerminal &&
           (await anyTerminalBusy(tabsRef.current));
         // Count after the await so edits made during the IPC check are seen.
-        const dirtyEditors = tabsRef.current.filter(
-          (t) => t.kind === "editor" && t.dirty,
-        ).length;
+        const dirtyEditors = tabsRef.current.filter(isDirtyTab).length;
         if (dirtyEditors > 0 || busyTerminal) {
           setPendingAppClose({ dirtyEditors, busyTerminal });
         } else {

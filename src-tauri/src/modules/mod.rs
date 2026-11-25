@@ -11,6 +11,7 @@ pub mod fs;
 pub mod git;
 pub mod history;
 pub mod ipc_body;
+pub mod kernel;
 pub mod lsp;
 pub mod net;
 pub mod proc;

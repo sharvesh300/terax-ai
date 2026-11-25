@@ -1,14 +1,7 @@
-import {
-  listenFsChanged,
-  parentDir,
-  watchAdd,
-  watchRemove,
-} from "@/modules/explorer/lib/watch";
 import { currentWorkspaceEnv } from "@/modules/workspace";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useEffect, useRef, useState } from "react";
-import { createCoalescer, touchesPath } from "./lib/liveReload";
+import { useFileWatch } from "./useFileWatch";
 
 type ReadResult =
   | { kind: "text"; content: string; size: number }
@@ -34,32 +27,21 @@ function toStatus(res: ReadResult): MarkdownStatus {
  * the loading state, keeps the last good text when a read fails midway
  * through an agent's atomic rewrite, and returns the same status object when
  * nothing changed so unchanged documents do not re-render. A hidden tab only
- * remembers that it is stale and catches up when shown.
+ * remembers that it is stale and catches up when shown. `force` lifts the
+ * 10 MB soft limit ("Open anyway"); the backend's 50 MB hard cap still holds.
  */
 export function useMarkdownDocument(
   path: string,
   visible: boolean,
+  force = false,
 ): MarkdownStatus {
   const [status, setStatus] = useState<MarkdownStatus>({ kind: "loading" });
-  const visibleRef = useRef(visible);
-  const reloadRef = useRef<(() => void) | null>(null);
-  const staleRef = useRef(false);
-
-  useEffect(() => {
-    visibleRef.current = visible;
-    if (visible && staleRef.current) {
-      staleRef.current = false;
-      reloadRef.current?.();
-    }
-  }, [visible]);
+  const readRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     let alive = true;
     let requestId = 0;
     const workspace = currentWorkspaceEnv();
-    // The watcher reports canonical paths; the tab may hold an alias spelling.
-    let canonical: string | null = null;
-    staleRef.current = false;
     setStatus({ kind: "loading" });
 
     const read = () => {
@@ -67,6 +49,7 @@ export function useMarkdownDocument(
       invoke<ReadResult>("fs_read_file", {
         path,
         workspace,
+        force,
       })
         .then((res) => {
           if (!alive || id !== requestId) return;
@@ -88,52 +71,16 @@ export function useMarkdownDocument(
           );
         });
     };
-
-    const coalescer = createCoalescer(read);
-    const onTouched = () => {
-      if (visibleRef.current) coalescer.poke();
-      else staleRef.current = true;
-    };
-    reloadRef.current = read;
-
-    const matches = (paths: readonly string[]) =>
-      touchesPath(paths, path) ||
-      (canonical !== null && touchesPath(paths, canonical));
-
-    const dir = parentDir(path);
-    watchAdd([dir], [path], workspace);
-    const unlisten: Array<() => void> = [];
-    const track = (pending: Promise<() => void>) =>
-      void pending.then((un) => (alive ? unlisten.push(un) : un()));
-    track(
-      listenFsChanged((paths) => {
-        if (matches(paths)) onTouched();
-      }),
-    );
-    track(
-      getCurrentWebviewWindow().listen<{ path: string }>(
-        "fs:file-written",
-        (e) => {
-          if (matches([e.payload.path])) onTouched();
-        },
-      ),
-    );
-
+    readRef.current = read;
     read();
-    invoke<string>("fs_canonicalize", { path, workspace })
-      .then((c) => {
-        if (alive) canonical = c;
-      })
-      .catch(() => {});
 
     return () => {
       alive = false;
-      coalescer.cancel();
-      reloadRef.current = null;
-      for (const un of unlisten) un();
-      watchRemove([dir], [path], workspace);
+      readRef.current = () => {};
     };
-  }, [path]);
+  }, [path, force]);
+
+  useFileWatch(path, visible, () => readRef.current());
 
   return status;
 }

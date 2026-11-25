@@ -4,6 +4,8 @@ export { useTabSwitcher } from "./lib/useTabSwitcher";
 export { labelFor } from "./lib/tabLabel";
 export {
   MAX_PANES_PER_TAB,
+  isDirtyTab,
+  isFileTab,
   useTabs,
   nextActiveInSpace,
   planCloseTabsToRight,
@@ -13,6 +15,7 @@ export {
   type EditorTab,
   type PreviewTab,
   type MarkdownTab,
+  type NotebookTab,
   type AiDiffTab,
   type GitDiffTab,
   type GitHistoryTab,

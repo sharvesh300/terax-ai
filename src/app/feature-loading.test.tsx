@@ -5,6 +5,7 @@ import { EditorStack } from "@/modules/editor/EditorStackLazy";
 import { AiDiffStack } from "@/modules/editor/AiDiffStackLazy";
 import { GitDiffStack } from "@/modules/editor/GitDiffStackLazy";
 import { MarkdownStack } from "@/modules/markdown/MarkdownStackLazy";
+import { NotebookStack } from "@/modules/notebook/NotebookStackLazy";
 import { GitHistoryStack } from "@/modules/git-history/GitHistoryStackLazy";
 
 const loads = vi.hoisted(() => ({
@@ -12,6 +13,7 @@ const loads = vi.hoisted(() => ({
   ai: vi.fn(),
   git: vi.fn(),
   markdown: vi.fn(),
+  notebook: vi.fn(),
   history: vi.fn(),
 }));
 vi.mock("@/modules/editor/EditorStack", () => {
@@ -30,6 +32,10 @@ vi.mock("@/modules/markdown/MarkdownStack", () => {
   loads.markdown();
   return { MarkdownStack: () => null };
 });
+vi.mock("@/modules/notebook/NotebookStack", () => {
+  loads.notebook();
+  return { NotebookStack: () => null };
+});
 vi.mock("@/modules/git-history/GitHistoryStack", () => {
   loads.history();
   return { GitHistoryStack: () => null };
@@ -40,6 +46,7 @@ const stacks = [
   AiDiffStack,
   GitDiffStack,
   MarkdownStack,
+  NotebookStack,
   GitHistoryStack,
 ];
 function render(stack: (typeof stacks)[number], tabs: unknown[], activeId = 1) {
@@ -56,6 +63,7 @@ it("does not import unused features when rendering a terminal or cold restored t
     { id: 1, kind: "terminal" },
     { id: 2, kind: "editor", cold: true },
     { id: 3, kind: "markdown", cold: true },
+    { id: 7, kind: "notebook", cold: true },
     { id: 4, kind: "ai-diff" },
     { id: 5, kind: "git-diff" },
     { id: 6, kind: "git-history" },
@@ -71,6 +79,7 @@ it("loads each feature when its first live surface is needed", async () => {
     "ai-diff",
     "git-commit-file",
     "markdown",
+    "notebook",
     "git-history",
   ];
   stacks.forEach((stack, index) => {

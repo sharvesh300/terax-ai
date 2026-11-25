@@ -6,6 +6,7 @@ import {
 import type {
   EditorTab,
   MarkdownTab,
+  NotebookTab,
   PreviewTab,
   Tab,
   TerminalTab,
@@ -24,7 +25,8 @@ export type SerializedTab =
     }
   | { kind: "editor"; path: string }
   | { kind: "preview"; url: string }
-  | { kind: "markdown"; path: string };
+  | { kind: "markdown"; path: string }
+  | { kind: "notebook"; path: string };
 
 function basename(path: string): string {
   const parts = path.split(/[\\/]/).filter(Boolean);
@@ -61,6 +63,7 @@ export function isSerializableTab(tab: Tab): boolean {
     case "editor":
     case "preview":
     case "markdown":
+    case "notebook":
       return true;
     default:
       return false;
@@ -83,6 +86,8 @@ function serializeTab(tab: Tab): SerializedTab | null {
       return { kind: "preview", url: tab.url };
     case "markdown":
       return { kind: "markdown", path: tab.path };
+    case "notebook":
+      return { kind: "notebook", path: tab.path };
     default:
       return null;
   }
@@ -194,6 +199,16 @@ function hydrateTab(
         title: basename(s.path),
         path: s.path,
       } satisfies MarkdownTab;
+    case "notebook":
+      return {
+        id: allocId(),
+        kind: "notebook",
+        spaceId,
+        cold: true,
+        title: basename(s.path),
+        path: s.path,
+        dirty: false,
+      } satisfies NotebookTab;
     default:
       return null;
   }

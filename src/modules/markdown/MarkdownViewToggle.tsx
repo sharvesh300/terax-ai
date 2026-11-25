@@ -7,6 +7,8 @@ type Props = {
   onChange: (mode: Mode) => void;
   renderedDisabled?: boolean;
   renderedHint?: string;
+  rawDisabled?: boolean;
+  rawHint?: string;
 };
 
 export function MarkdownViewToggle({
@@ -14,6 +16,8 @@ export function MarkdownViewToggle({
   onChange,
   renderedDisabled,
   renderedHint,
+  rawDisabled,
+  rawHint,
 }: Props) {
   return (
     <div className="absolute right-3 top-3 z-10 inline-flex items-center gap-0.5 rounded-md border border-border/60 bg-card p-0.5 text-[11px] shadow-sm">
@@ -36,11 +40,15 @@ export function MarkdownViewToggle({
       <button
         type="button"
         onClick={() => onChange("raw")}
+        disabled={rawDisabled}
+        title={rawDisabled ? rawHint : undefined}
         className={cn(
           "rounded px-2 py-0.5 transition-colors",
           mode === "raw"
             ? "bg-accent text-foreground"
             : "text-muted-foreground hover:text-foreground",
+          rawDisabled &&
+            "cursor-not-allowed opacity-40 hover:text-muted-foreground",
         )}
       >
         Raw

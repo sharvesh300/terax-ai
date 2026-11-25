@@ -1,6 +1,7 @@
 import { MarkdownCode } from "@/components/ai-elements/markdown-code";
 import { checkReadable } from "@/modules/ai/lib/security";
 import { cn } from "@/lib/utils";
+import { nameForCache } from "@/lib/streamdownPluginName";
 import { useAssetGrant } from "@/lib/useAssetGrant";
 import {
   memo,
@@ -112,10 +113,17 @@ const MarkdownBody = memo(function MarkdownBody({
     return [
       d.raw,
       d.sanitize,
-      rehypeLocalImages(path, (abs) => assetUrlFor(abs) ?? "data:,", {
-        boundary,
-        isReadable: (abs) => checkReadable(abs).ok,
-      }),
+      // A fresh owner per path, boundary and grant: Streamdown caches by
+      // plugin name, so an unnamed closure would keep the first document's
+      // paths and its grant-less "data:," URLs.
+      nameForCache(
+        rehypeLocalImages(path, (abs) => assetUrlFor(abs) ?? "data:,", {
+          boundary,
+          isReadable: (abs) => checkReadable(abs).ok,
+        }),
+        "teraxLocalImages",
+        {},
+      ),
       d.harden,
     ];
   }, [path, boundary, assetUrlFor]);

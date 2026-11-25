@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { defineConfig, type PluginOption, type UserConfig } from "vite";
 import Inspect from "vite-plugin-inspect";
+import { katexWoff2Only } from "./scripts/katex-fonts.mjs";
 
 const host = process.env.TAURI_DEV_HOST;
 const rootDir = import.meta.dirname;
@@ -122,6 +123,10 @@ function lazyChunk(id: string): string | null {
     pkg.startsWith("@replit/codemirror")
   )
     return "codemirror";
+  // Math rendering (KaTeX, ~90 kB gzip) loads only for notebook cells with
+  // math. Grouped with streamdown it would ride along with every chat and
+  // markdown preview, so it is left to the lazy import's own chunk.
+  if (pkg === "@streamdown/math") return null;
   if (pkg === "streamdown" || pkg.startsWith("@streamdown/"))
     return "streamdown";
 
@@ -136,6 +141,7 @@ export default defineConfig(async ({ mode }): Promise<UserConfig> => ({
     }),
     react(),
     tailwindcss(),
+    katexWoff2Only(),
     // Module-graph inspector at /__inspect (who-imports-what, per-plugin
     // transforms). Opt-in via `pnpm dev:inspect`, never in a production build.
     ...(mode === "development" && inspectGraph
